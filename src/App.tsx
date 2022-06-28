@@ -41,6 +41,10 @@ export default function App() {
       return;
     }
 
+    callObject.getNetworkStats().then((foo) => {
+      console.log("BITRATE AUDIO: ", foo.stats.latest.recvBitsPerSecond);
+    });
+
     callObject
       .updateInputSettings({
         video: {
