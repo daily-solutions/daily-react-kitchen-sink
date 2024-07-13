@@ -1,4 +1,7 @@
 {
-  "extends": "@tsconfig/vite-react/tsconfig.json",
-  "include": ["src", "vite.config.ts"]
+	"extends": "@tsconfig/vite-react/tsconfig.json",
+	"include": ["src", "vite.config.ts", "types"],
+	"compilerOptions": {
+		"allowJs": true
+	}
 }
