@@ -1,3 +1,4 @@
+// rtcStats.js
 import { transformStats, logTransformedData, storePeriod, logStoredPeriods, logAggregatedStats } from './rtcStatsUtils';
 
 export function initializeRTCStats() {
@@ -54,6 +55,8 @@ export function initializeRTCStats() {
 
     const transformedData = transformStats(reportArray, previousReports);
     transformedStatsArray.push(transformedData); // Accumulate transformed stats
+
+    storePeriod(transformedData); // Store transformed periods
   }
 
   async function logTransformedAndAggregatedStats() {
