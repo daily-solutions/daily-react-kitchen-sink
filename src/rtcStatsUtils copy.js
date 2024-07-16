@@ -24,35 +24,38 @@ const config = {
     frameHeightTarget: 720,
     framerateTarget: 30,
     smoothnessTarget: 100,
-    freezeTarget: 1, // Inverted so we don't divide by 0. We also invert the actual freeze duration per second
-    freezeDurationTarget: 1 // Inverted so we don't divide by 0. We also invert the actual freeze duration per second
+    freezeTarget: 1,
+    freezeDurationTarget: 1
 };
 
 /**
  * Types of RTC stats to process
  * @type {string[]}
  */
-const TYPES_TO_KEEP = [
-    "inbound-rtp",
-    //"outbound-rtp", 
-    //"remote-inbound-rtp", 
-    //"remote-outbound-rtp"
-];
+const TYPES_TO_KEEP = ["inbound-rtp", "outbound-rtp", "remote-inbound-rtp", "remote-outbound-rtp"];
 
 /**
  * Kinds of media to process
  * @type {string[]}
  */
-const KINDS_TO_KEEP = [
-    //"audio", 
-    "video"
-];
+const KINDS_TO_KEEP = ["audio", "video"];
 
 /**
  * SSRCs to exclude from processing
  * @type {number[]}
  */
 const SSRC_TO_REMOVE = [1234];
+
+const INBOUND_KEYS = [
+    'frameHeight', 'framesDecoded', 'packetsReceived', 'bytesReceived',
+    'jitter', 'packetsLost', 'totalDecodeTime', 'totalInterFrameDelay',
+    'totalSquaredInterFrameDelay', 'nackCount', 'firCount', 'pliCount'
+];
+
+const OUTBOUND_KEYS = [
+    'frameHeight', 'framesEncoded', 'packetsSent', 'bytesSent',
+    'totalEncodeTime', 'totalPacketSendDelay', 'nackCount', 'firCount', 'pliCount'
+];
 
 /**
  * Keys to transform in RTC stats
@@ -104,9 +107,9 @@ const freezeQueue = {};
 
 /**
  * Object to store transformed metrics per period
- * @type {{inboundPC: Array, outboundPC: Array}}
+ * @type {{inboundData: Array, outboundData: Array}}
  */
-let periods = { inboundPC: [], outboundPC: [] };
+let periods = [];
 
 /**
  * Sorts periods by timestamp
@@ -124,11 +127,11 @@ function sortPeriodsByTimestamp(periods) {
 /**
  * Splits raw data into inbound and outbound peer connections
  * @param {Object[]} rawData - Raw RTC stats data
- * @returns {{inboundPC: TransformedStats[], outboundPC: TransformedStats[]}} Split peer connections
+ * @returns {{inboundData: TransformedStats[], outboundData: TransformedStats[]}} Split peer connections
  */
 function splitPeerConnections(rawData) {
-    const inboundPC = [];
-    const outboundPC = [];
+    const inboundData = [];
+    const outboundData = [];
 
     rawData.forEach(period => {
         let hasInbound = false;
@@ -144,13 +147,13 @@ function splitPeerConnections(rawData) {
             }
         }
 
-        if (hasInbound) inboundPC.push(period);
-        if (hasOutbound) outboundPC.push(period);
+        if (hasInbound) inboundData.push(period);
+        if (hasOutbound) outboundData.push(period);
     });
 
     return {
-        inboundPC: sortPeriodsByTimestamp(inboundPC),
-        outboundPC: sortPeriodsByTimestamp(outboundPC),
+        inboundData: sortPeriodsByTimestamp(inboundData),
+        outboundData: sortPeriodsByTimestamp(outboundData),
     };
 }
 
@@ -193,27 +196,36 @@ function distributeFreezeDuration(id, key, transformedData) {
  * Calculates target percentages for various metrics
  * @param {TransformedStats} transformedData - Transformed stats object
  */
+
+/*
 function calculateTargets(transformedData) {
-    for (const value of Object.values(transformedData)) {
-        if (typeof value === 'object' && value !== null) {
-            if ('frameHeight' in value) {
-                value.frameHeightTargetPct = (value.frameHeight / config.frameHeightTarget) * 100;
-            }
-            if ('framesDecodedPerSecond' in value) {
-                value.framerateTargetPct = (value.framesDecodedPerSecond / config.framerateTarget) * 100;
-            }
-            if ('framesDecodedPerSecond' in value && 'previousFramesDecodedPerSecond' in value) {
-                const smoothness = Math.abs(value.framesDecodedPerSecond - value.previousFramesDecodedPerSecond) >= 2 ? 0 : 100; // Return here to adjust smoothness calculation
-                value.smoothnessTargetPct = smoothness;
-            }
-            if ('freezeCountPerSecond' in value) {
-                value.freezeTargetPct = (1 - value.freezeCountPerSecond) * 100;
-            }
-            if ('totalFreezesDurationPerSecond' in value) {
-                value.freezeDurationTargetPct = (1 - value.totalFreezesDurationPerSecond) * 100;
-            }
-        }
+    if ('frameHeight' in transformedData) {
+        transformedData.frameHeightTargetPct = (transformedData.frameHeight / config.frameHeightTarget) * 100;
     }
+    if ('framesDecodedPerSecond' in transformedData) {
+        transformedData.framerateTargetPct = (transformedData.framesDecodedPerSecond / config.framerateTarget) * 100;
+    }
+    if ('framesDecodedPerSecond' in transformedData && 'previousFramesDecodedPerSecond' in transformedData) {
+        const smoothness = Math.abs(transformedData.framesDecodedPerSecond - transformedData.previousFramesDecodedPerSecond) >= 2 ? 0 : 100;
+        transformedData.smoothnessTargetPct = smoothness;
+    }
+    if ('freezeCountPerSecond' in transformedData) {
+        transformedData.freezeTargetPct = (1 - transformedData.freezeCountPerSecond) * 100;
+    }
+    if ('totalFreezesDurationPerSecond' in transformedData) {
+        transformedData.freezeDurationTargetPct = (1 - transformedData.totalFreezesDurationPerSecond) * 100;
+    }*/
+
+function calculateTargets(transformedData) {
+    if ('frameHeight' in transformedData) {
+        transformedData.frameHeightTargetPct = (transformedData.frameHeight / config.frameHeightTarget) * 100;
+    }
+    if (transformedData.type.includes('inbound') && 'framesDecodedPerSecond' in transformedData) {
+        transformedData.framerateTargetPct = (transformedData.framesDecodedPerSecond / config.framerateTarget) * 100;
+    } else if (transformedData.type.includes('outbound') && 'framesEncodedPerSecond' in transformedData) {
+        transformedData.framerateTargetPct = (transformedData.framesEncodedPerSecond / config.framerateTarget) * 100;
+    }
+    // Add other target calculations as needed
 }
 
 /**
@@ -222,72 +234,31 @@ function calculateTargets(transformedData) {
  * @param {Object} previousTransformedData - Previously transformed data
  * @returns {TransformedStats} Transformed stats
  */
-function transformPeriod(period, previousTransformedData) {
-    const transformedData = {
-        clientId: period.clientId,
-        testId: period.testId,
-        connectionId: period.connectionId,
-        reportNum: period.reportNum,
-    };
+function transformPeriod(value, previousData) {
+    const { timestamp, id, type } = value;
+    const transformedData = { id, timestamp, type };
 
-    for (const [key, value] of Object.entries(period)) {
-        if (typeof value === 'object' && value !== null) {
-            const { type, kind, ssrc, timestamp, id } = value;
-            if (TYPES_TO_KEEP.includes(type) && KINDS_TO_KEEP.includes(kind) && !SSRC_TO_REMOVE.includes(ssrc)) {
-                transformedData[key] = {};
-                for (const innerKey of KEYS_TO_TRANSFORM) {
-                    if (innerKey in value) {
-                        transformedData[key][innerKey] = value[innerKey];
-                    }
+    // Determine if it's inbound or outbound
+    const isInbound = type.includes('inbound');
+    const relevantKeys = isInbound ? INBOUND_KEYS : OUTBOUND_KEYS;
+
+    for (const key of relevantKeys) {
+        if (key in value) {
+            transformedData[key] = value[key];
+        }
+    }
+
+    if (previousData && previousData.timestamp) {
+        const timeDiff = (timestamp - previousData.timestamp) / 1000;
+        if (timeDiff > 0) {
+            for (const key of CUMULATIVE_KEYS) {
+                if (key in value && key in previousData) {
+                    const previousValue = previousData[key] || 0;
+                    const currentValue = value[key];
+                    const diffValue = currentValue - previousValue;
+                    const perSecondValue = diffValue / timeDiff;
+                    transformedData[`${key}PerSecond`] = perSecondValue;
                 }
-
-                const previousData = previousTransformedData[id];
-
-                if (previousData && previousData[key] && previousData[key].id === id) {
-                    const timeDiff = (timestamp - previousData[key].timestamp) / 1000;
-
-                    if (timeDiff > 0) {
-                        const percentOfSecs = 1 / timeDiff;
-                        for (const innerKey of CUMULATIVE_KEYS) {
-                            if (innerKey in value) {
-                                const previousValue = previousData[key][innerKey] || 0;
-                                const currentValue = value[innerKey];
-                                const diffValue = currentValue - previousValue;
-                                const perSecondValue = diffValue * percentOfSecs;
-
-                                if (innerKey === 'totalFreezesDuration') {
-                                    const freezeDurationDiff = currentValue - previousValue;
-                                    if (freezeDurationDiff > 1) {
-                                        freezeQueue[id] = {
-                                            remainingDuration: freezeDurationDiff,
-                                            remainingPeriods: Math.ceil(freezeDurationDiff),
-                                        };
-                                        distributeFreezeDuration(id, key, transformedData);
-                                    } else {
-                                        transformedData[key][`${innerKey}PerSecond`] = perSecondValue;
-                                    }
-                                } else {
-                                    transformedData[key][`${innerKey}PerSecond`] = perSecondValue;
-                                }
-                            }
-                        }
-                    } else {
-                        for (const innerKey of CUMULATIVE_KEYS) {
-                            const perSecondKey = `${innerKey}PerSecond`;
-                            if (perSecondKey in previousData[key]) {
-                                transformedData[key][perSecondKey] = previousData[key][perSecondKey];
-                            }
-                        }
-                    }
-                } else {
-                    for (const innerKey of CUMULATIVE_KEYS) {
-                        if (innerKey in value) {
-                            transformedData[key][`${innerKey}PerSecond`] = value[innerKey];
-                        }
-                    }
-                }
-
-                distributeFreezeDuration(id, key, transformedData);
             }
         }
     }
@@ -301,46 +272,48 @@ function transformPeriod(period, previousTransformedData) {
  * Transforms raw RTC stats into a more usable format
  * @param {Object[]} rawData - Raw RTC stats data
  * @param {Object} previousTransformedData - Previously transformed data
- * @returns {{inboundPC: TransformedStats[], outboundPC: TransformedStats[]}} Transformed stats
+ * @returns {{inboundData: TransformedStats[], outboundData: TransformedStats[]}} Transformed stats
  */
 export function transformStats(rawData, previousTransformedData) {
-    const { inboundPC, outboundPC } = splitPeerConnections(rawData);
-    const transformedInboundPC = [];
-    const transformedOutboundPC = [];
+    const transformedData = {};
 
-    for (const period of inboundPC) {
-        const transformedData = transformPeriod(period, previousTransformedData);
-        transformedInboundPC.push(transformedData);
-        for (const [key, value] of Object.entries(transformedData)) {
-            if (value.id) {
-                previousTransformedData[value.id] = { ...value, ...previousTransformedData[value.id], [key]: value };
+    for (const period of rawData) {
+        for (const [key, value] of Object.entries(period)) {
+            if (typeof value === 'object' && value !== null && 'id' in value) {
+                const { type, kind, ssrc } = value;
+                if (TYPES_TO_KEEP.includes(type) && KINDS_TO_KEEP.includes(kind) && !SSRC_TO_REMOVE.includes(ssrc)) {
+                    const id = value.id;
+                    if (!transformedData[id]) {
+                        transformedData[id] = { id, periods: [] };
+                    }
+                    const transformedPeriod = transformPeriod(value, previousTransformedData[id]);
+                    if (transformedPeriod) {
+                        transformedData[id].periods.push(transformedPeriod);
+
+                        // Update previousTransformedData
+                        previousTransformedData[id] = transformedPeriod;
+                    }
+                }
             }
         }
     }
 
-    for (const period of outboundPC) {
-        const transformedData = transformPeriod(period, previousTransformedData);
-        transformedOutboundPC.push(transformedData);
-        for (const [key, value] of Object.entries(transformedData)) {
-            if (value.id) {
-                previousTransformedData[value.id] = { ...value, ...previousTransformedData[value.id], [key]: value };
-            }
-        }
-    }
-
-    return {
-        inboundPC: transformedInboundPC.map(data => filterKeys(data, KEYS_TO_KEEP)),
-        outboundPC: transformedOutboundPC.map(data => filterKeys(data, KEYS_TO_KEEP))
-    };
+    return Object.values(transformedData);
 }
 
 /**
  * Stores a transformed period
- * @param {{inboundPC: Array, outboundPC: Array}} transformedData 
+ * @param {{inboundData: Array, outboundData: Array}} transformedData 
  */
 export function storePeriod(transformedData) {
-    periods.inboundPC.push(...transformedData.inboundPC);
-    periods.outboundPC.push(...transformedData.outboundPC);
+    for (const userData of transformedData) {
+        const existingUserIndex = periods.findIndex(p => p.id === userData.id);
+        if (existingUserIndex !== -1) {
+            periods[existingUserIndex].periods.push(...userData.periods);
+        } else {
+            periods.push({ ...userData });
+        }
+    }
 }
 
 
@@ -363,50 +336,43 @@ export function logStoredPeriods() {
  * Calculates average metrics from stored periods
  * @returns {{averageResolution: number, averageFramerate: number, averageFreezeCount: number, averageFreezeDuration: number}}
  */
+
 function calculateAverageMetrics() {
-    const metrics = {
-        resolutions: [],
-        framerates: [],
-        freezeCounts: [],
-        freezeDurations: []
-    };
+    return periods.map(userData => {
+        const metrics = {
+            resolutions: [],
+            framerates: [],
+            freezeCounts: [],
+            freezeDurations: []
+        };
 
-    const processMetrics = (period) => {
-        Object.values(period).forEach(value => {
-            if (typeof value === 'object' && value !== null) {
-                if ('frameHeight' in value) metrics.resolutions.push(value.frameHeight || 0);
-                if ('framesDecodedPerSecond' in value) metrics.framerates.push(value.framesDecodedPerSecond || 0);
-                if ('freezeCountPerSecond' in value) metrics.freezeCounts.push(value.freezeCountPerSecond || 0);
-                if ('totalFreezesDurationPerSecond' in value) metrics.freezeDurations.push(value.totalFreezesDurationPerSecond || 0);
-            }
+        userData.periods.forEach(period => {
+            if ('frameHeight' in period) metrics.resolutions.push(period.frameHeight || 0);
+            if ('framesDecodedPerSecond' in period) metrics.framerates.push(period.framesDecodedPerSecond || 0);
+            if ('freezeCountPerSecond' in period) metrics.freezeCounts.push(period.freezeCountPerSecond || 0);
+            if ('totalFreezesDurationPerSecond' in period) metrics.freezeDurations.push(period.totalFreezesDurationPerSecond || 0);
         });
-    };
 
-    periods.inboundPC.forEach(processMetrics);
-    periods.outboundPC.forEach(processMetrics);
+        const calculateAverage = (arr) => arr.length > 0 ? arr.reduce((acc, val) => acc + val, 0) / arr.length : 0;
 
-    const calculateAverage = (arr) => arr.length > 0 ? arr.reduce((acc, val) => acc + val, 0) / arr.length : 0;
-
-    return {
-        averageResolution: calculateAverage(metrics.resolutions),
-        averageFramerate: calculateAverage(metrics.framerates),
-        averageFreezeCount: calculateAverage(metrics.freezeCounts),
-        averageFreezeDuration: calculateAverage(metrics.freezeDurations)
-    };
+        return {
+            id: userData.id,
+            averageResolution: calculateAverage(metrics.resolutions),
+            averageFramerate: calculateAverage(metrics.framerates),
+            averageFreezeCount: calculateAverage(metrics.freezeCounts),
+            averageFreezeDuration: calculateAverage(metrics.freezeDurations)
+        };
+    });
 }
 
-/**
- * Calculates target percentage met for various metrics
- * @returns {{resolutionTargetPctMet: number, smoothnessTargetPctMet: number, freezeCountTargetPctMet: number, freezeDurationTargetPctMet: number}}
- */
 function calculateTargetPctMet() {
-    const { averageResolution, averageFramerate, averageFreezeCount, averageFreezeDuration } = calculateAverageMetrics();
-    return {
-        resolutionTargetPctMet: (averageResolution / config.frameHeightTarget) * 100,
-        smoothnessTargetPctMet: (averageFramerate / config.framerateTarget) * 100,
-        freezeCountTargetPctMet: (1 - averageFreezeCount) * 100,
-        freezeDurationTargetPctMet: (1 - averageFreezeDuration) * 100,
-    };
+    return calculateAverageMetrics().map(userData => ({
+        ...userData,
+        resolutionTargetPctMet: (userData.averageResolution / config.frameHeightTarget) * 100,
+        smoothnessTargetPctMet: (userData.averageFramerate / config.framerateTarget) * 100,
+        freezeCountTargetPctMet: (1 - userData.averageFreezeCount) * 100,
+        freezeDurationTargetPctMet: (1 - userData.averageFreezeDuration) * 100,
+    }));
 }
 
 /**
@@ -414,11 +380,7 @@ function calculateTargetPctMet() {
  * @returns {Object} Aggregated stats
  */
 export function calculateAggregatedStats() {
-    return {
-        ...calculateAverageMetrics(),
-        ...calculateTargetPctMet(),
-        // Add more calculated stats as needed
-    };
+    return calculateTargetPctMet();
 }
 
 /**
@@ -438,7 +400,7 @@ class RTCStatsProvider {
      * Transform raw stats data
      * @param {Object[]} rawData - Raw stats data
      * @param {Object} previousTransformedData - Previously transformed data
-     * @returns {{inboundPC: TransformedStats[], outboundPC: TransformedStats[]}} Transformed stats
+     * @returns {{inboundData: TransformedStats[], outboundData: TransformedStats[]}} Transformed stats
      */
     transformStats(rawData, previousTransformedData) {
         throw new Error('Method not implemented');

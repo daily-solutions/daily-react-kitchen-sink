@@ -1,132 +1,212 @@
 // rtcStats.js
-import { transformStats, logTransformedData, storePeriod, logStoredPeriods, logAggregatedStats } from './rtcStatsUtils';
+import { createProvider, logTransformedData, storePeriod, logStoredPeriods, logAggregatedStats } from './rtcStatsUtils';
 
-export function initializeRTCStats() {
-  if (window.rtcstats) {
-    console.warn("[RTCStats] Already declared");
-    return;
-  }
+/**
+ * @typedef {Object} RTCStatsConfig
+ * @property {number} reportInterval - Interval for reporting stats in seconds
+ * @property {number} logInterval - Interval for logging stats in seconds
+ * @property {string} testId - Unique identifier for the test
+ * @property {string} clientId - Unique identifier for the client
+ */
 
-  window.rtcstats = this;
+/**
+ * @type {RTCStatsConfig}
+ */
+const DEFAULT_CONFIG = {
+  reportInterval: 1,
+  logInterval: 5,
+  testId: '',
+  clientId: '',
+};
 
-  const test_id = document.currentScript?.getAttribute("test_id") || crypto.randomUUID();
-  const client_id = document.currentScript?.getAttribute("client_id") || crypto.randomUUID();
-  const report_interval = document.currentScript?.getAttribute("report_interval") || 1;
-  const log_interval = document.currentScript?.getAttribute("log_interval") || 5;
-
-  const _config = {
-    report_interval: report_interval,
-    log_interval: log_interval,
-    test_id,
-    client_id,
-  };
-
-  const peerConns = [];
-  let transformedStatsArray = []; // Array to store transformed stats
-  const previousReports = new Map(); // Store previous reports to compare across intervals
-
-  async function store(reportArray) {
-    console.info("[RTCStats] Logging raw data...", reportArray);
-    // Store report array here
-  }
-
-  async function logBatch(batchCollection) {
-    const reportArray = [];
-
-    batchCollection.forEach((b) => {
-      b.splice(0, b.length).forEach((data) => {
-        const rawReport = {
-          clientId: _config.client_id,
-          testId: _config.test_id,
-          connectionId: data.connectionId,
-          reportNum: data.reportNum,
-          ...data,
-        };
-
-        reportArray.push(rawReport);
-      });
-    });
-
-    if (!reportArray.length) {
+/**
+ * RTCStats class for managing WebRTC statistics
+ */
+class RTCStats {
+  /**
+   * @param {string} providerName - Name of the WebRTC provider (e.g., 'daily', 'twilio')
+   * @param {Partial<RTCStatsConfig>} config - Configuration options
+   */
+  constructor(providerName, config = {}) {
+    if (window.rtcstats) {
+      console.warn("[RTCStats] Already declared");
       return;
     }
 
-    store(reportArray); // Log raw data
+    window.rtcstats = this;
 
-    const transformedData = transformStats(reportArray, previousReports);
-    transformedStatsArray.push(transformedData); // Accumulate transformed stats
+    this.config = { ...DEFAULT_CONFIG, ...config };
+    this.config.testId = this.config.testId || crypto.randomUUID();
+    this.config.clientId = this.config.clientId || crypto.randomUUID();
 
-    storePeriod(transformedData); // Store transformed periods
+    this.provider = createProvider(providerName);
+    this.peerConns = new WeakSet();
+    this.peerConnsArray = []; // New array to store references
+    this.transformedStatsArray = [];
+    this.previousReports = new Map();
+
+    this.initializePeerConnection();
   }
 
-  async function logTransformedAndAggregatedStats() {
-    logTransformedData(transformedStatsArray); // Log accumulated transformed stats
-    transformedStatsArray = []; // Clear array after logging
-    logStoredPeriods(); // Log stored periods
-    logAggregatedStats(); // Log aggregated stats
-  }
+  /**
+   * Initialize custom RTCPeerConnection
+   */
+  initializePeerConnection() {
+    const originalRTCPeerConnection = window.RTCPeerConnection;
+    const self = this;
 
-  class RTCStatsPeerConnection extends RTCPeerConnection {
-    constructor(config) {
-      super();
+    window.RTCPeerConnection = class extends originalRTCPeerConnection {
+      constructor(config) {
+        super(config);
+        this.rtcStatsData = {
+          connectionId: crypto.randomUUID(),
+          reportNum: 0,
+          batch: []
+        };
+        self.peerConns.add(this);
+        self.peerConnsArray.push(this); // Add to array
 
-      this.batch = [];
-      this.report_num = 0;
-      this.connection_id = crypto.randomUUID();
+        console.log("[RTCStats] PeerConnection instantiated", this);
 
-      peerConns.push(this);
+        this.addEventListener("connectionstatechange", this.handleConnectionStateChange.bind(this));
+      }
 
-      console.warn("PeerConnection instantiated", this);
-
-      this.addEventListener("connectionstatechange", () => {
-        clearInterval(this._statsInterval);
+      handleConnectionStateChange() {
+        console.log("[RTCStats] Connection state changed to:", this.connectionState);
+        if (this._statsInterval) {
+          clearInterval(this._statsInterval);
+        }
 
         if (this.connectionState === "connected") {
-          this._getStats(this.getStats());
-
+          this.getStats().then(this.processStats.bind(this));
           this._statsInterval = setInterval(() => {
-            if (this.connectionState !== "connected")
-              return clearInterval(this._statsInterval);
-
-            this._getStats(this.getStats());
-          }, _config.report_interval * 1000);
+            if (this.connectionState !== "connected") {
+              clearInterval(this._statsInterval);
+              return;
+            }
+            this.getStats().then(this.processStats.bind(this));
+          }, self.config.reportInterval * 1000);
         }
-      });
-    }
+      }
 
-    async _getStats(getStatsPromise) {
-      const stats = await getStatsPromise;
-      const rtcdata = Object.fromEntries(stats.entries());
+      processStats(stats) {
+        console.info("[RTCStats] Processing stats...");
+        const rtcdata = Object.fromEntries(stats.entries());
+        if (!rtcdata) return;
+        this.rtcStatsData.batch.push({
+          clientId: self.config.clientId,
+          testId: self.config.testId,
+          connectionId: this.rtcStatsData.connectionId,
+          reportNum: this.rtcStatsData.reportNum,
+          ...rtcdata,
+        });
 
-      if (!rtcdata) return;
-
-      this.batch.push({
-        clientId: _config.client_id,
-        testId: _config.test_id,
-        connectionId: this.connection_id,
-        reportNum: this.report_num,
-        ...rtcdata,
-      });
-
-      this.report_num += 1;
-    }
+        this.rtcStatsData.reportNum += 1;
+        console.log("[RTCStats] Batch size:", this.rtcStatsData.batch.length);
+      }
+    };
   }
 
-  if (!["test_id", "client_id"].every((k) => k in _config)) {
-    console.warn("[RTCStats] Missing config keys. Exiting");
-  } else {
-    console.info(`[RTCStats] Init with config:`, _config);
-    RTCPeerConnection = RTCStatsPeerConnection;
+  /**
+   * Store raw WebRTC stats
+   * @param {Object[]} reportArray
+   */
+  async store(reportArray) {
+    console.info("[RTCStats] Logging raw data...", reportArray);
+    // Implement storage logic here
+  }
 
-    setInterval(() => {
-      if (!peerConns.length) {
+  /**
+   * Log batch of WebRTC stats
+   * @param {Object[][]} batchCollection
+   */
+  async logBatch(batchCollection) {
+    console.log("[RTCStats] Logging batch...")
+    const reportArray = batchCollection.flatMap(batch =>
+      batch.splice(0, batch.length).map(data => ({
+        clientId: this.config.clientId,
+        testId: this.config.testId,
+        connectionId: data.connectionId,
+        reportNum: data.reportNum,
+        ...data,
+      }))
+    );
+
+    if (!reportArray.length) return;
+
+    await this.store(reportArray);
+
+    const transformedData = this.provider.transformStats(reportArray, this.previousReports);
+    this.transformedStatsArray.push(transformedData);
+
+    storePeriod(transformedData);
+  }
+
+  /**
+   * Log transformed and aggregated stats
+   */
+  logTransformedAndAggregatedStats() {
+    logTransformedData(this.transformedStatsArray);
+    this.transformedStatsArray = [];
+    logStoredPeriods();
+    logAggregatedStats();
+  }
+
+  /**
+   * Start logging stats
+   */
+  startLogging() {
+    console.log("[RTCStats] Start logging stats...");
+    this.loggingInterval = setInterval(() => {
+      console.log("[RTCStats] Logging interval triggered");
+
+      if (this.peerConnsArray.length === 0) {
+        console.log("[RTCStats] No peer connections available");
         return;
       }
-      const batchCollection = peerConns.filter((pc) => pc.batch.length).map((pc) => pc.batch);
+
+      console.log("[RTCStats] peerConns size:", this.peerConnsArray.length);
+
+      const batchCollection = this.peerConnsArray
+        .filter(pc => pc.rtcStatsData && pc.rtcStatsData.batch && pc.rtcStatsData.batch.length > 0)
+        .map(pc => pc.rtcStatsData.batch);
+
+      console.log("[RTCStats] batchCollection size:", batchCollection.length);
+      console.log("[RTCStats] First batch size (if exists):", batchCollection[0]?.length);
+
       if (batchCollection.length) {
-        logBatch(batchCollection); // Log raw data every log_interval
-        logTransformedAndAggregatedStats(); // Log transformed and aggregated data every log_interval
+        this.logBatch(batchCollection);
+        this.logTransformedAndAggregatedStats();
+
+        // Clear batches after processing
+        this.peerConnsArray.forEach(pc => {
+          if (pc.rtcStatsData) {
+            pc.rtcStatsData.batch = [];
+          }
+        });
+      } else {
+        console.log("[RTCStats] No batches to process");
       }
-    }, _config.log_interval * 1000);
+    }, this.config.logInterval * 1000);
   }
+
+  /**
+   * Stop logging stats
+   */
+  stopLogging() {
+    if (this.loggingInterval) {
+      clearInterval(this.loggingInterval);
+    }
+  }
+}
+
+/**
+ * Initialize RTCStats
+ * @param {string} providerName - Name of the WebRTC provider
+ * @param {Partial<RTCStatsConfig>} config - Configuration options
+ */
+export function initializeRTCStats(providerName, config = {}) {
+  const rtcStats = new RTCStats(providerName, config);
+  rtcStats.startLogging();
+  return rtcStats;
 }
