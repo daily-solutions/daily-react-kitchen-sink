@@ -1,4 +1,4 @@
-export function calculatePerSecondMetrics(currentPeriod, previousPeriod, CUMULATIVE_KEYS, KEYS_TO_KEEP_AFTER_PER_SECOND_CALCULATIONS, TARGETS, connection_id) {
+export function calculatePerSecondMetrics(currentPeriod, previousPeriod, CUMULATIVE_KEYS, KEYS_TO_KEEP_AFTER_PER_SECOND_CALCULATIONS, TARGETS, connection_id, callAverages, callTargets) {
     const perSecondMetrics = {};
 
     for (const key in currentPeriod) {
@@ -25,19 +25,33 @@ export function calculatePerSecondMetrics(currentPeriod, previousPeriod, CUMULAT
                 });
             }
 
+            const id = current.id;
+
             perSecondMetrics[key] = {
                 'connection_id': connection_id,
                 ...removeKeysAfterPerSecondCalculations(current, KEYS_TO_KEEP_AFTER_PER_SECOND_CALCULATIONS),
                 ...perSecondMetric,
             };
+
+            // Ensure callAverages has an entry for this id
+            if (!callAverages[id]) {
+                callAverages[id] = {
+                    frameHeight: { sum: 0, count: 0, avg: 0 },
+                    framesDecodedPerSecond: { sum: 0, count: 0, avg: 0 },
+                    freezeCountPerSecond: { sum: 0, count: 0, avg: 0 },
+                    totalFreezesDurationPerSecond: { sum: 0, count: 0, avg: 0 }
+                };
+            }
+
+            updateCallAverages(perSecondMetrics[key], callAverages, id);
+            //updateCallTargets(callAverages, callTargets, TARGETS, id);
         }
     }
 
-    let perSecondMetricsWithTargets = {};
-    perSecondMetricsWithTargets = calculatePerPeriodTargets(perSecondMetrics, TARGETS);
-
+    let perSecondMetricsWithTargets = calculatePerPeriodTargets(perSecondMetrics, TARGETS);
     return perSecondMetricsWithTargets;
 }
+
 
 
 export function filterPeriodMetrics(currentPeriod, TYPES_TO_KEEP, KINDS_TO_KEEP, SSRC_TO_REMOVE, KEYS_TO_KEEP) {
@@ -110,64 +124,128 @@ function calculatePerPeriodTargets(metrics, TARGETS) {
     return targets;
 }
 
-export function calculateSmoothness(currentPerSecondData, previousPerSecondData) {
+export function calculateSmoothness(smoothnessBuffer, frameRatePeriodChange, frameRateDelta) {
     let perSecondDataWithSmoothness = {};
 
-    for (const key in currentPerSecondData) {
-        if (currentPerSecondData.hasOwnProperty(key)) {
-            const current = currentPerSecondData[key];
-
-            if (previousPerSecondData.hasOwnProperty(key)) {
-                const previous = previousPerSecondData[key];
-
-                if (current.framesDecodedPerSecond !== undefined && previous.framesDecodedPerSecond !== undefined) {
-                    // Calculate smoothness (example calculation, replace with your logic)
-                    const frameRateDelta = Math.abs(current.framesDecodedPerSecond - previous.framesDecodedPerSecond)
-                    current.smoothness = frameRateDelta >= 5 ? 0 : 100;
-
-                }
+    // Initialize smoothness to 100 for all periods in the buffer
+    smoothnessBuffer.forEach(period => {
+        for (const key in period) {
+            if (period.hasOwnProperty(key)) {
+                period[key].smoothness = 100;
             }
+        }
+    });
 
-            perSecondDataWithSmoothness[key] = current;
+    // Ensure the buffer has at least frameRatePeriodChange periods
+    if (smoothnessBuffer.length < frameRatePeriodChange) {
+        return smoothnessBuffer[smoothnessBuffer.length - 1]; // Return the most recent period with smoothness set to 100
+    }
+
+    // Get the most recent period and the 5th period from the buffer
+    const mostRecentPeriod = smoothnessBuffer[smoothnessBuffer.length - 1];
+    const otherPeriod = smoothnessBuffer[smoothnessBuffer.length - frameRatePeriodChange];
+
+    for (const key in mostRecentPeriod) {
+        if (mostRecentPeriod.hasOwnProperty(key) && otherPeriod.hasOwnProperty(key)) {
+            const recentFramesDecoded = mostRecentPeriod[key].framesDecodedPerSecond;
+            const otherPeriodFramesDecoded = otherPeriod[key].framesDecodedPerSecond;
+
+            // We calculate smoothness by getting the framerate delta from the current period, and a period X periods ago
+            const frameRateDeltaMetric = Math.abs(recentFramesDecoded - otherPeriodFramesDecoded);
+
+            // If the delta is greater than the frameRateDelta specified, we say the stream is not smooth. Therefor 0%. If its less than the frameRateDelta, we say its 100% smooth.
+            const smoothness = frameRateDeltaMetric >= frameRateDelta ? 0 : 100;
+
+            // Add smoothness metric to the most recent period
+            perSecondDataWithSmoothness[key] = {
+                ...mostRecentPeriod[key],
+                smoothness: smoothness,
+            };
         }
     }
 
     return perSecondDataWithSmoothness;
 }
 
-export function distributeFreezeDuration(batch, connectionId) {
-    const periodLength = batch.length;
-    const currentData = batch[periodLength - 1];
-
-    if (!currentData) return batch; // If there's no current data, return the batch as is.
-
-    let remainingFreezeCount = currentData.freezeCountPerSecond;
-    let remainingFreezeDuration = currentData.totalFreezesDurationPerSecond;
-
-    if (remainingFreezeCount > 0 || remainingFreezeDuration > 0) {
-        // Distribute the freeze count
-        for (let i = periodLength - 1; i >= 0 && remainingFreezeCount > 0; i--) {
-            const freezeCountToDistribute = Math.min(1, remainingFreezeCount);
-            batch[i].freezeCountPerSecond = (batch[i].freezeCountPerSecond || 0) + freezeCountToDistribute;
-            remainingFreezeCount -= freezeCountToDistribute;
-        }
-
-        // Distribute the freeze duration
-        for (let i = periodLength - 1; i >= 0 && remainingFreezeDuration > 0; i--) {
-            const freezeDurationToDistribute = Math.min(1, remainingFreezeDuration);
-            batch[i].totalFreezesDurationPerSecond = (batch[i].totalFreezesDurationPerSecond || 0) + freezeDurationToDistribute;
-            remainingFreezeDuration -= freezeDurationToDistribute;
-        }
-
-        // Set the last period's values to the remainder if any
-        if (remainingFreezeCount > 0) {
-            batch[periodLength - 1].freezeCountPerSecond += remainingFreezeCount;
-        }
-        if (remainingFreezeDuration > 0) {
-            batch[periodLength - 1].totalFreezesDurationPerSecond += remainingFreezeDuration;
-        }
+function updateCallAverages(metrics, callAverages, id) {
+    // Ensure callAverages has an entry for this id
+    if (!callAverages[id]) {
+        callAverages[id] = {
+            frameHeight: { sum: 0, count: 0, avg: 0 },
+            framesDecodedPerSecond: { sum: 0, count: 0, avg: 0 },
+            freezeCountPerSecond: { sum: 0, count: 0, avg: 0 },
+            totalFreezesDurationPerSecond: { sum: 0, count: 0, avg: 0 }
+        };
     }
 
-    return batch;
+    // Update frameHeight average
+    if (metrics.frameHeight !== undefined) {
+        callAverages[id].frameHeight.sum += metrics.frameHeight;
+        callAverages[id].frameHeight.count += 1;
+        callAverages[id].frameHeight.avg = callAverages[id].frameHeight.sum / callAverages[id].frameHeight.count;
+    }
+
+    // Update framesDecodedPerSecond average
+    if (metrics.framesDecodedPerSecond !== undefined) {
+        callAverages[id].framesDecodedPerSecond.sum += metrics.framesDecodedPerSecond;
+        callAverages[id].framesDecodedPerSecond.count += 1;
+        callAverages[id].framesDecodedPerSecond.avg = callAverages[id].framesDecodedPerSecond.sum / callAverages[id].framesDecodedPerSecond.count;
+    }
+
+    // Update freezeCountPerSecond average
+    if (metrics.freezeCountPerSecond !== undefined) {
+        callAverages[id].freezeCountPerSecond.sum += metrics.freezeCountPerSecond;
+        callAverages[id].freezeCountPerSecond.count += 1;
+        callAverages[id].freezeCountPerSecond.avg = callAverages[id].freezeCountPerSecond.sum / callAverages[id].freezeCountPerSecond.count;
+    }
+
+    // Update totalFreezesDurationPerSecond average
+    if (metrics.totalFreezesDurationPerSecond !== undefined) {
+        callAverages[id].totalFreezesDurationPerSecond.sum += metrics.totalFreezesDurationPerSecond;
+        callAverages[id].totalFreezesDurationPerSecond.count += 1;
+        callAverages[id].totalFreezesDurationPerSecond.avg = callAverages[id].totalFreezesDurationPerSecond.sum / callAverages[id].totalFreezesDurationPerSecond.count;
+    }
 }
 
+export function getAllKeyNames(callTargetCollection) {
+    const keyNames = new Set(); // Use a set to avoid duplicate keys
+
+    callTargetCollection.forEach(item => {
+        if (item.callAverages) {
+            Object.keys(item.callAverages).forEach(key => {
+                keyNames.add(key);
+            });
+        }
+    });
+
+    return Array.from(keyNames);
+}
+
+export function updateCallTargets(callAverages, callTargets, TARGETS, id) {
+    if (!callTargets[id]) {
+        callTargets[id] = {
+            frameHeightTargetPct: 100,
+            framesDecodedPerSecondTargetPct: 100,
+            freezeCountPerSecondTargetPct: 100,
+            totalFreezesDurationPerSecondTargetPct: 100
+        };
+    }
+
+    // Update frameHeight target
+    if (callAverages[id].frameHeight.avg !== undefined) {
+        callTargets[id].frameHeightTargetPct = (callAverages[id].frameHeight.avg / TARGETS.frameHeight) * 100;
+    }
+    // Update framesDecodedPerSecond target
+    if (callAverages[id].framesDecodedPerSecond.avg !== undefined) {
+        callTargets[id].framesDecodedPerSecondTargetPct = (callAverages[id].framesDecodedPerSecond.avg / TARGETS.framesDecodedPerSecond) * 100;
+    }
+    // Update freezeCountPerSecond target
+    if (callAverages[id].freezeCountPerSecond.avg !== undefined) {
+        callTargets[id].freezeCountPerSecondTargetPct = ((1 - callAverages[id].freezeCountPerSecond.avg) / TARGETS.freezeCountPerSecond) * 100;
+    }
+    // Update totalFreezesDurationPerSecond target
+    if (callAverages[id].totalFreezesDurationPerSecond.avg !== undefined) {
+        callTargets[id].totalFreezesDurationPerSecondTargetPct = ((1 - callAverages[id].totalFreezesDurationPerSecond.avg) / TARGETS.totalFreezesDurationPerSecond) * 100;
+    }
+
+}

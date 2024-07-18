@@ -1,4 +1,4 @@
-import { calculateSmoothness, filterPeriodMetrics, calculatePerSecondMetrics, distributeFreezeDuration } from "./rtcStats/rtcStatsUtils.js";
+import { getAllKeyNames, calculateSmoothness, filterPeriodMetrics, calculatePerSecondMetrics, updateCallTargets } from "./rtcStats/rtcStatsUtils.js";
 import { TARGETS, CUMULATIVE_KEYS, KINDS_TO_KEEP, KEYS_TO_KEEP, TYPES_TO_KEEP, SSRC_TO_REMOVE, KEYS_TO_KEEP_AFTER_PER_SECOND_CALCULATIONS } from './rtcStats/constants';
 
 export function rtcStats(config) {
@@ -6,27 +6,57 @@ export function rtcStats(config) {
     console.warn("[RTCStats] Already declared");
     return;
   }
-
   window.rtcstats = this;
 
   const _config = {
     report_interval: 1,
     log_interval: 5,
+    frameRatePeriodChange: 2,
+    frameRateDelta: 5,
     ...config
   };
 
   // Reference all active WebRTC peer connections
   const peerConns = [];
+  const callAveragesArray = [];
   const rawReports = {};
   const currentFilteredReports = {};
   const previousFilteredReports = {};
   const currentPerSecondReport = {};
   const previousPerSecondReport = {};
 
-  async function store(reportArray) {
-    console.info("[RTCStats] Logging data...", reportArray);
+  function isObjectEmpty(obj) {
+    return Object.keys(obj).length === 0;
+  }
+
+  async function store(data) {
+    console.info("[RTCStats] Logging data...", data);
     // Store report array here
   }
+
+  async function logCallTarget(callTargetCollection) {
+
+    callTargetCollection.forEach(item => {
+      const callAverages = item.callAverages;
+      const callTargets = item.callTargets;
+
+      const ids = Object.keys(callAverages);
+
+      ids.forEach(id => {
+        updateCallTargets(callAverages, callTargets, TARGETS, id);
+      });
+    });
+
+    const finalCallTargetCollection = {
+      test_id: _config.test_id,
+      callTargetCollection
+    };
+
+    if (!isObjectEmpty(finalCallTargetCollection.callTargetCollection)) {
+      store(finalCallTargetCollection);
+    }
+  }
+
 
   async function logBatch(batchCollection) {
     // Note: async function so main event loop is kept unblocked
@@ -44,13 +74,10 @@ export function rtcStats(config) {
     if (!reportArray.length) {
       return;
     }
-    console.log("++++++ reportArray", reportArray, this.connection_id);
     store(reportArray);
   }
 
-  function isObjectEmpty(obj) {
-    return Object.keys(obj).length === 0;
-  }
+
 
   /**
    * -----------------------
@@ -62,14 +89,28 @@ export function rtcStats(config) {
       super(config);
 
       // Init
-      this.batch = []; // Array of reports collected
-      this.report_num = 0; // Current tick for timeseries
-      this.connection_id = crypto.randomUUID();
+      this.report = {
+        batch: [], // Array of reports collected
+        report_num: 0, // Current tick for timeseries
+        connection_id: crypto.randomUUID(),
+      };
+      this.calculations = {
+        smoothnessBuffer: [],
+        callAverages: {
+        },
+        callTargets: {
+        }
+      };
 
       // Append to global array
-      peerConns.push(this);
+      peerConns.push(this.report);
 
-      console.warn("PeerConnection instantiated", this);
+
+      callAveragesArray.push({ "callAverages": this.calculations.callAverages, "callTargets": this.calculations.callTargets });
+
+
+
+      console.warn("PeerConnection instantiated", this.report);
 
       // Listen for connection state, start harvesting when connected
       this.addEventListener("connectionstatechange", () => {
@@ -97,32 +138,36 @@ export function rtcStats(config) {
       const rtcdata = Object.fromEntries(stats.entries());
       if (!rtcdata) return;
 
-      // Store previous and current filtered reports based on connection_id
-      previousFilteredReports[this.connection_id] = { ...currentFilteredReports[this.connection_id] };
-      rawReports[this.connection_id] = {
+      // Here we store the previous filtered report period. This is used to calculate per second metrics.
+      previousFilteredReports[this.report.connection_id] = { ...currentFilteredReports[this.report.connection_id] };
+      // This contains all of the metrics that we would expect from rtcStats
+      rawReports[this.report.connection_id] = {
         clientId: _config.client_id,
         testId: _config.test_id,
-        connectionId: this.connection_id,
-        reportNum: this.report_num,
+        connectionId: this.report.connection_id,
+        reportNum: this.report.report_num,
         ...rtcdata,
       };
-      console.log("++++++ connection id", this.connection_id);
       // Filter data from the raw reports we're getting from rtcStats. We're only interested in certain types of metrics.
-      currentFilteredReports[this.connection_id] = filterPeriodMetrics(rawReports[this.connection_id], TYPES_TO_KEEP, KINDS_TO_KEEP, SSRC_TO_REMOVE, KEYS_TO_KEEP);
+      currentFilteredReports[this.report.connection_id] = filterPeriodMetrics(rawReports[this.report.connection_id], TYPES_TO_KEEP, KINDS_TO_KEEP, SSRC_TO_REMOVE, KEYS_TO_KEEP);
       // Then calculate the per second metrics based on the filtered reports. Report also contains targets.
-      previousPerSecondReport[this.connection_id] = { ...currentPerSecondReport[this.connection_id] };
-      currentPerSecondReport[this.connection_id] = calculatePerSecondMetrics(currentFilteredReports[this.connection_id], previousFilteredReports[this.connection_id], CUMULATIVE_KEYS, KEYS_TO_KEEP_AFTER_PER_SECOND_CALCULATIONS, TARGETS, this.connection_id);
-
+      // Here we grab the previous per second report period. This is used to calculate smoothness.
+      previousPerSecondReport[this.report.connection_id] = { ...currentPerSecondReport[this.report.connection_id] };
+      // Here we calculate the per second metrics based on the current and previous filtered reports.
+      currentPerSecondReport[this.report.connection_id] = calculatePerSecondMetrics(currentFilteredReports[this.report.connection_id], previousFilteredReports[this.report.connection_id], CUMULATIVE_KEYS, KEYS_TO_KEEP_AFTER_PER_SECOND_CALCULATIONS, TARGETS, this.report.connection_id, this.calculations.callAverages, this.calculations.callTargets);
       // If the per second reports are not empty, push them to the batch array. Reports may be empty because of peer connections that do not contain metrics we're interested in.
-      if (!isObjectEmpty(currentPerSecondReport[this.connection_id])) {
-        console.log("++++++ previous per second report", previousPerSecondReport[this.connection_id])
-        console.log("++++++ per second report", currentPerSecondReport[this.connection_id]);
+      if (!isObjectEmpty(currentPerSecondReport[this.report.connection_id])) {
         let metricsWithSmoothness = {}
-        metricsWithSmoothness = calculateSmoothness(currentPerSecondReport[this.connection_id], previousPerSecondReport[this.connection_id]);
-        console.log("++++++ metrics with smoothness", metricsWithSmoothness);
-        this.batch.push(currentPerSecondReport[this.connection_id]);
+        this.calculations.smoothnessBuffer.push(currentPerSecondReport[this.report.connection_id]);
+        if (this.calculations.smoothnessBuffer.length > _config.frameRatePeriodChange) {
+          this.calculations.smoothnessBuffer.shift();
+        }
+        // Here we add the smoothness metric to the per second report. It is currently based on the current per second metric, and the previous per second metric.
+        metricsWithSmoothness = calculateSmoothness(this.calculations.smoothnessBuffer, _config.frameRatePeriodChange, _config.frameRateDelta);
+        //calculateSmoothness(currentPerSecondReport[this.report.connection_id], previousPerSecondReport[this.report.connection_id]);
+        this.report.batch.push(metricsWithSmoothness);
 
-        this.report_num += 1;
+        this.report.report_num += 1;
       }
     }
   }
@@ -149,8 +194,11 @@ export function rtcStats(config) {
       const batchCollection = peerConns
         .filter((pc) => pc.batch.length) // filter out PeerConnections with empty batches (no reports)
         .map((pc) => pc.batch); // return the batch array containing all the reports (arbitrary amount)
+      const callTargetCollection = callAveragesArray
+        .filter((ca) => Object.keys(ca.callAverages).length)
       if (batchCollection.length) {
         logBatch(batchCollection);
+        logCallTarget(callTargetCollection);
       }
     }, _config.log_interval * 1000);
   }
