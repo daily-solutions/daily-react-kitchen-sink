@@ -1,212 +1,157 @@
-// rtcStats.js
-import { createProvider, logTransformedData, storePeriod, logStoredPeriods, logAggregatedStats } from './rtcStatsUtils';
+import { calculateSmoothness, filterPeriodMetrics, calculatePerSecondMetrics, distributeFreezeDuration } from "./rtcStats/rtcStatsUtils.js";
+import { TARGETS, CUMULATIVE_KEYS, KINDS_TO_KEEP, KEYS_TO_KEEP, TYPES_TO_KEEP, SSRC_TO_REMOVE, KEYS_TO_KEEP_AFTER_PER_SECOND_CALCULATIONS } from './rtcStats/constants';
 
-/**
- * @typedef {Object} RTCStatsConfig
- * @property {number} reportInterval - Interval for reporting stats in seconds
- * @property {number} logInterval - Interval for logging stats in seconds
- * @property {string} testId - Unique identifier for the test
- * @property {string} clientId - Unique identifier for the client
- */
+export function rtcStats(config) {
+  if (window.rtcstats) {
+    console.warn("[RTCStats] Already declared");
+    return;
+  }
 
-/**
- * @type {RTCStatsConfig}
- */
-const DEFAULT_CONFIG = {
-  reportInterval: 1,
-  logInterval: 5,
-  testId: '',
-  clientId: '',
-};
+  window.rtcstats = this;
 
-/**
- * RTCStats class for managing WebRTC statistics
- */
-class RTCStats {
-  /**
-   * @param {string} providerName - Name of the WebRTC provider (e.g., 'daily', 'twilio')
-   * @param {Partial<RTCStatsConfig>} config - Configuration options
-   */
-  constructor(providerName, config = {}) {
-    if (window.rtcstats) {
-      console.warn("[RTCStats] Already declared");
+  const _config = {
+    report_interval: 1,
+    log_interval: 5,
+    ...config
+  };
+
+  // Reference all active WebRTC peer connections
+  const peerConns = [];
+  const rawReports = {};
+  const currentFilteredReports = {};
+  const previousFilteredReports = {};
+  const currentPerSecondReport = {};
+  const previousPerSecondReport = {};
+
+  async function store(reportArray) {
+    console.info("[RTCStats] Logging data...", reportArray);
+    // Store report array here
+  }
+
+  async function logBatch(batchCollection) {
+    // Note: async function so main event loop is kept unblocked
+    const reportArray = [];
+    batchCollection.forEach((b) => {
+      // grab the reports and empty the array (batch is cleared)
+      const reports = b.splice(0, b.length).forEach((data) =>
+        reportArray.push({
+          test_id: _config.test_id,
+          data,
+        })
+      );
+    });
+
+    if (!reportArray.length) {
       return;
     }
+    console.log("++++++ reportArray", reportArray, this.connection_id);
+    store(reportArray);
+  }
 
-    window.rtcstats = this;
-
-    this.config = { ...DEFAULT_CONFIG, ...config };
-    this.config.testId = this.config.testId || crypto.randomUUID();
-    this.config.clientId = this.config.clientId || crypto.randomUUID();
-
-    this.provider = createProvider(providerName);
-    this.peerConns = new WeakSet();
-    this.peerConnsArray = []; // New array to store references
-    this.transformedStatsArray = [];
-    this.previousReports = new Map();
-
-    this.initializePeerConnection();
+  function isObjectEmpty(obj) {
+    return Object.keys(obj).length === 0;
   }
 
   /**
-   * Initialize custom RTCPeerConnection
+   * -----------------------
+   * RTCPeerConnection shim
+   * -----------------------
    */
-  initializePeerConnection() {
-    const originalRTCPeerConnection = window.RTCPeerConnection;
-    const self = this;
+  class RTCStatsPeerConnection extends RTCPeerConnection {
+    constructor(config) {
+      super(config);
 
-    window.RTCPeerConnection = class extends originalRTCPeerConnection {
-      constructor(config) {
-        super(config);
-        this.rtcStatsData = {
-          connectionId: crypto.randomUUID(),
-          reportNum: 0,
-          batch: []
-        };
-        self.peerConns.add(this);
-        self.peerConnsArray.push(this); // Add to array
+      // Init
+      this.batch = []; // Array of reports collected
+      this.report_num = 0; // Current tick for timeseries
+      this.connection_id = crypto.randomUUID();
 
-        console.log("[RTCStats] PeerConnection instantiated", this);
+      // Append to global array
+      peerConns.push(this);
 
-        this.addEventListener("connectionstatechange", this.handleConnectionStateChange.bind(this));
-      }
+      console.warn("PeerConnection instantiated", this);
 
-      handleConnectionStateChange() {
-        console.log("[RTCStats] Connection state changed to:", this.connectionState);
-        if (this._statsInterval) {
-          clearInterval(this._statsInterval);
-        }
+      // Listen for connection state, start harvesting when connected
+      this.addEventListener("connectionstatechange", () => {
+        clearInterval(this._statsInterval);
 
         if (this.connectionState === "connected") {
-          this.getStats().then(this.processStats.bind(this));
+          this._getStats(this.getStats());
+
+          // Start collecting data every TICK...
           this._statsInterval = setInterval(() => {
-            if (this.connectionState !== "connected") {
-              clearInterval(this._statsInterval);
-              return;
-            }
-            this.getStats().then(this.processStats.bind(this));
-          }, self.config.reportInterval * 1000);
+            if (this.connectionState !== "connected")
+              return clearInterval(this._statsInterval);
+
+            // Run an override of the getStats method
+            this._getStats(this.getStats());
+          }, _config.report_interval * 1000);
         }
+      });
+    }
+
+
+
+    async _getStats(getStatsPromise) {
+      const stats = await getStatsPromise;
+      const rtcdata = Object.fromEntries(stats.entries());
+      if (!rtcdata) return;
+
+      // Store previous and current filtered reports based on connection_id
+      previousFilteredReports[this.connection_id] = { ...currentFilteredReports[this.connection_id] };
+      rawReports[this.connection_id] = {
+        clientId: _config.client_id,
+        testId: _config.test_id,
+        connectionId: this.connection_id,
+        reportNum: this.report_num,
+        ...rtcdata,
+      };
+      console.log("++++++ connection id", this.connection_id);
+      // Filter data from the raw reports we're getting from rtcStats. We're only interested in certain types of metrics.
+      currentFilteredReports[this.connection_id] = filterPeriodMetrics(rawReports[this.connection_id], TYPES_TO_KEEP, KINDS_TO_KEEP, SSRC_TO_REMOVE, KEYS_TO_KEEP);
+      // Then calculate the per second metrics based on the filtered reports. Report also contains targets.
+      previousPerSecondReport[this.connection_id] = { ...currentPerSecondReport[this.connection_id] };
+      currentPerSecondReport[this.connection_id] = calculatePerSecondMetrics(currentFilteredReports[this.connection_id], previousFilteredReports[this.connection_id], CUMULATIVE_KEYS, KEYS_TO_KEEP_AFTER_PER_SECOND_CALCULATIONS, TARGETS, this.connection_id);
+
+      // If the per second reports are not empty, push them to the batch array. Reports may be empty because of peer connections that do not contain metrics we're interested in.
+      if (!isObjectEmpty(currentPerSecondReport[this.connection_id])) {
+        console.log("++++++ previous per second report", previousPerSecondReport[this.connection_id])
+        console.log("++++++ per second report", currentPerSecondReport[this.connection_id]);
+        let metricsWithSmoothness = {}
+        metricsWithSmoothness = calculateSmoothness(currentPerSecondReport[this.connection_id], previousPerSecondReport[this.connection_id]);
+        console.log("++++++ metrics with smoothness", metricsWithSmoothness);
+        this.batch.push(currentPerSecondReport[this.connection_id]);
+
+        this.report_num += 1;
       }
-
-      processStats(stats) {
-        console.info("[RTCStats] Processing stats...");
-        const rtcdata = Object.fromEntries(stats.entries());
-        if (!rtcdata) return;
-        this.rtcStatsData.batch.push({
-          clientId: self.config.clientId,
-          testId: self.config.testId,
-          connectionId: this.rtcStatsData.connectionId,
-          reportNum: this.rtcStatsData.reportNum,
-          ...rtcdata,
-        });
-
-        this.rtcStatsData.reportNum += 1;
-        console.log("[RTCStats] Batch size:", this.rtcStatsData.batch.length);
-      }
-    };
+    }
   }
 
   /**
-   * Store raw WebRTC stats
-   * @param {Object[]} reportArray
+   * -----------------------
+   * Init method
+   * -----------------------
    */
-  async store(reportArray) {
-    console.info("[RTCStats] Logging raw data...", reportArray);
-    // Implement storage logic here
-  }
+  if (!["test_id", "client_id"].every((k) => k in _config)) {
+    console.warn("[RTCStats] Missing config keys. Exiting");
+  } else {
+    console.info(`[RTCStats] Init with config:`, _config);
+    RTCPeerConnection = RTCStatsPeerConnection;
 
-  /**
-   * Log batch of WebRTC stats
-   * @param {Object[][]} batchCollection
-   */
-  async logBatch(batchCollection) {
-    console.log("[RTCStats] Logging batch...")
-    const reportArray = batchCollection.flatMap(batch =>
-      batch.splice(0, batch.length).map(data => ({
-        clientId: this.config.clientId,
-        testId: this.config.testId,
-        connectionId: data.connectionId,
-        reportNum: data.reportNum,
-        ...data,
-      }))
-    );
-
-    if (!reportArray.length) return;
-
-    await this.store(reportArray);
-
-    const transformedData = this.provider.transformStats(reportArray, this.previousReports);
-    this.transformedStatsArray.push(transformedData);
-
-    storePeriod(transformedData);
-  }
-
-  /**
-   * Log transformed and aggregated stats
-   */
-  logTransformedAndAggregatedStats() {
-    logTransformedData(this.transformedStatsArray);
-    this.transformedStatsArray = [];
-    logStoredPeriods();
-    logAggregatedStats();
-  }
-
-  /**
-   * Start logging stats
-   */
-  startLogging() {
-    console.log("[RTCStats] Start logging stats...");
-    this.loggingInterval = setInterval(() => {
-      console.log("[RTCStats] Logging interval triggered");
-
-      if (this.peerConnsArray.length === 0) {
-        console.log("[RTCStats] No peer connections available");
+    // Main write interval
+    setInterval(() => {
+      if (!peerConns.length) {
+        // No connected peers, do nothing
         return;
       }
 
-      console.log("[RTCStats] peerConns size:", this.peerConnsArray.length);
-
-      const batchCollection = this.peerConnsArray
-        .filter(pc => pc.rtcStatsData && pc.rtcStatsData.batch && pc.rtcStatsData.batch.length > 0)
-        .map(pc => pc.rtcStatsData.batch);
-
-      console.log("[RTCStats] batchCollection size:", batchCollection.length);
-      console.log("[RTCStats] First batch size (if exists):", batchCollection[0]?.length);
-
+      // Create a batch of reports from each peer connection
+      const batchCollection = peerConns
+        .filter((pc) => pc.batch.length) // filter out PeerConnections with empty batches (no reports)
+        .map((pc) => pc.batch); // return the batch array containing all the reports (arbitrary amount)
       if (batchCollection.length) {
-        this.logBatch(batchCollection);
-        this.logTransformedAndAggregatedStats();
-
-        // Clear batches after processing
-        this.peerConnsArray.forEach(pc => {
-          if (pc.rtcStatsData) {
-            pc.rtcStatsData.batch = [];
-          }
-        });
-      } else {
-        console.log("[RTCStats] No batches to process");
+        logBatch(batchCollection);
       }
-    }, this.config.logInterval * 1000);
+    }, _config.log_interval * 1000);
   }
-
-  /**
-   * Stop logging stats
-   */
-  stopLogging() {
-    if (this.loggingInterval) {
-      clearInterval(this.loggingInterval);
-    }
-  }
-}
-
-/**
- * Initialize RTCStats
- * @param {string} providerName - Name of the WebRTC provider
- * @param {Partial<RTCStatsConfig>} config - Configuration options
- */
-export function initializeRTCStats(providerName, config = {}) {
-  const rtcStats = new RTCStats(providerName, config);
-  rtcStats.startLogging();
-  return rtcStats;
 }

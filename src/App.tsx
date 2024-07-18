@@ -34,33 +34,6 @@ export default function App() {
 	// @ts-expect-error add callObject to window for debugging
 	window.callObject = callObject;
 
-	useEffect(() => {
-		let rtcStats;
-
-		// Dynamically import and initialize rtcStats
-		import("./rtcStats").then(({ initializeRTCStats }) => {
-			if (!window.rtcstatsInitialized) {
-				rtcStats = initializeRTCStats("daily", {
-					reportInterval: 1,
-					logInterval: 5,
-					testId: `test-${Date.now()}`, // Generate a unique test ID
-					clientId: `client-${Math.random().toString(36).substr(2, 9)}`, // Generate a unique client ID
-				});
-				window.rtcstats = rtcStats;
-				window.rtcstatsInitialized = true;
-			}
-		});
-
-		// Cleanup function
-		return () => {
-			if (window.rtcstats) {
-				window.rtcstats.stopLogging();
-				delete window.rtcstats;
-				window.rtcstatsInitialized = false;
-			}
-		};
-	}, []);
-
 	const [inputSettingsUpdated, setInputSettingsUpdated] = useState(false);
 	const [enableBlurClicked, setEnableBlurClicked] = useState(false);
 	const [enableBackgroundClicked, setEnableBackgroundClicked] = useState(false);
