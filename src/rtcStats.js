@@ -154,7 +154,7 @@ export function rtcStats(config) {
       // Here we grab the previous per second report period. This is used to calculate smoothness.
       previousPerSecondReport[this.report.connection_id] = { ...currentPerSecondReport[this.report.connection_id] };
       // Here we calculate the per second metrics based on the current and previous filtered reports.
-      currentPerSecondReport[this.report.connection_id] = calculatePerSecondMetrics(currentFilteredReports[this.report.connection_id], previousFilteredReports[this.report.connection_id], CUMULATIVE_KEYS, KEYS_TO_KEEP_AFTER_PER_SECOND_CALCULATIONS, TARGETS, this.report.connection_id, this.calculations.callAverages, this.calculations.callTargets);
+      currentPerSecondReport[this.report.connection_id] = calculatePerSecondMetrics(currentFilteredReports[this.report.connection_id], previousFilteredReports[this.report.connection_id], CUMULATIVE_KEYS, KEYS_TO_KEEP_AFTER_PER_SECOND_CALCULATIONS, TARGETS, this.report.connection_id);
       // If the per second reports are not empty, push them to the batch array. Reports may be empty because of peer connections that do not contain metrics we're interested in.
       if (!isObjectEmpty(currentPerSecondReport[this.report.connection_id])) {
         let metricsWithSmoothness = {}
@@ -163,7 +163,7 @@ export function rtcStats(config) {
           this.calculations.smoothnessBuffer.shift();
         }
         // Here we add the smoothness metric to the per second report. It is currently based on the current per second metric, and the previous per second metric.
-        metricsWithSmoothness = calculateSmoothness(this.calculations.smoothnessBuffer, _config.frameRatePeriodChange, _config.frameRateDelta);
+        metricsWithSmoothness = calculateSmoothness(this.calculations.smoothnessBuffer, _config.frameRatePeriodChange, _config.frameRateDelta, this.calculations.callAverages);
         //calculateSmoothness(currentPerSecondReport[this.report.connection_id], previousPerSecondReport[this.report.connection_id]);
         this.report.batch.push(metricsWithSmoothness);
 

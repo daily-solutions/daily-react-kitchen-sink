@@ -1,4 +1,4 @@
-export function calculatePerSecondMetrics(currentPeriod, previousPeriod, CUMULATIVE_KEYS, KEYS_TO_KEEP_AFTER_PER_SECOND_CALCULATIONS, TARGETS, connection_id, callAverages, callTargets) {
+export function calculatePerSecondMetrics(currentPeriod, previousPeriod, CUMULATIVE_KEYS, KEYS_TO_KEEP_AFTER_PER_SECOND_CALCULATIONS, TARGETS, connection_id) {
     const perSecondMetrics = {};
 
     for (const key in currentPeriod) {
@@ -25,26 +25,12 @@ export function calculatePerSecondMetrics(currentPeriod, previousPeriod, CUMULAT
                 });
             }
 
-            const id = current.id;
-
             perSecondMetrics[key] = {
                 'connection_id': connection_id,
                 ...removeKeysAfterPerSecondCalculations(current, KEYS_TO_KEEP_AFTER_PER_SECOND_CALCULATIONS),
                 ...perSecondMetric,
             };
 
-            // Ensure callAverages has an entry for this id
-            if (!callAverages[id]) {
-                callAverages[id] = {
-                    frameHeight: { sum: 0, count: 0, avg: 0 },
-                    framesDecodedPerSecond: { sum: 0, count: 0, avg: 0 },
-                    freezeCountPerSecond: { sum: 0, count: 0, avg: 0 },
-                    totalFreezesDurationPerSecond: { sum: 0, count: 0, avg: 0 }
-                };
-            }
-
-            updateCallAverages(perSecondMetrics[key], callAverages, id);
-            //updateCallTargets(callAverages, callTargets, TARGETS, id);
         }
     }
 
@@ -124,8 +110,9 @@ function calculatePerPeriodTargets(metrics, TARGETS) {
     return targets;
 }
 
-export function calculateSmoothness(smoothnessBuffer, frameRatePeriodChange, frameRateDelta) {
+export function calculateSmoothness(smoothnessBuffer, frameRatePeriodChange, frameRateDelta, callAverages) {
     let perSecondDataWithSmoothness = {};
+    let id = "";
 
     // Initialize smoothness to 100 for all periods in the buffer
     smoothnessBuffer.forEach(period => {
@@ -156,13 +143,31 @@ export function calculateSmoothness(smoothnessBuffer, frameRatePeriodChange, fra
             // If the delta is greater than the frameRateDelta specified, we say the stream is not smooth. Therefor 0%. If its less than the frameRateDelta, we say its 100% smooth.
             const smoothness = frameRateDeltaMetric >= frameRateDelta ? 0 : 100;
 
+            id = mostRecentPeriod[key].id;
+            console.log("+++++ id: ", id);
+
             // Add smoothness metric to the most recent period
             perSecondDataWithSmoothness[key] = {
                 ...mostRecentPeriod[key],
                 smoothness: smoothness,
             };
+
+            // Ensure callAverages has an entry for this id
+            if (!callAverages[id]) {
+                callAverages[id] = {
+                    frameHeight: { sum: 0, count: 0, avg: 0 },
+                    framesDecodedPerSecond: { sum: 0, count: 0, avg: 0 },
+                    freezeCountPerSecond: { sum: 0, count: 0, avg: 0 },
+                    totalFreezesDurationPerSecond: { sum: 0, count: 0, avg: 0 },
+                    smoothness: { sum: 0, count: 0, avg: 0 }
+                };
+            }
+
+            updateCallAverages(perSecondDataWithSmoothness[key], callAverages, id);
         }
     }
+
+
 
     return perSecondDataWithSmoothness;
 }
@@ -174,7 +179,8 @@ function updateCallAverages(metrics, callAverages, id) {
             frameHeight: { sum: 0, count: 0, avg: 0 },
             framesDecodedPerSecond: { sum: 0, count: 0, avg: 0 },
             freezeCountPerSecond: { sum: 0, count: 0, avg: 0 },
-            totalFreezesDurationPerSecond: { sum: 0, count: 0, avg: 0 }
+            totalFreezesDurationPerSecond: { sum: 0, count: 0, avg: 0 },
+            smoothness: { sum: 0, count: 0, avg: 0 }
         };
     }
 
@@ -205,6 +211,13 @@ function updateCallAverages(metrics, callAverages, id) {
         callAverages[id].totalFreezesDurationPerSecond.count += 1;
         callAverages[id].totalFreezesDurationPerSecond.avg = callAverages[id].totalFreezesDurationPerSecond.sum / callAverages[id].totalFreezesDurationPerSecond.count;
     }
+
+    // Update smoothness average
+    if (metrics.smoothness !== undefined) {
+        callAverages[id].smoothness.sum += metrics.smoothness;
+        callAverages[id].smoothness.count += 1;
+        callAverages[id].smoothness.avg = callAverages[id].smoothness.sum / callAverages[id].smoothness.count;
+    }
 }
 
 export function getAllKeyNames(callTargetCollection) {
@@ -227,7 +240,8 @@ export function updateCallTargets(callAverages, callTargets, TARGETS, id) {
             frameHeightTargetPct: 100,
             framesDecodedPerSecondTargetPct: 100,
             freezeCountPerSecondTargetPct: 100,
-            totalFreezesDurationPerSecondTargetPct: 100
+            totalFreezesDurationPerSecondTargetPct: 100,
+            smoothnessTargetPct: 100
         };
     }
 
@@ -246,6 +260,10 @@ export function updateCallTargets(callAverages, callTargets, TARGETS, id) {
     // Update totalFreezesDurationPerSecond target
     if (callAverages[id].totalFreezesDurationPerSecond.avg !== undefined) {
         callTargets[id].totalFreezesDurationPerSecondTargetPct = ((1 - callAverages[id].totalFreezesDurationPerSecond.avg) / TARGETS.totalFreezesDurationPerSecond) * 100;
+    }
+    // Update smoothness target
+    if (callAverages[id].smoothness.avg !== undefined) {
+        callTargets[id].smoothnessTargetPct = (callAverages[id].smoothness.avg / TARGETS.smoothnessTarget) * 100;
     }
 
 }
