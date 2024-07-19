@@ -1,3 +1,16 @@
+/**
+ * 
+ * 
+ * @param {*} currentPeriod 
+ * @param {*} previousPeriod 
+ * @param {*} CUMULATIVE_KEYS 
+ * @param {*} KEYS_TO_KEEP_AFTER_PER_SECOND_CALCULATIONS 
+ * @param {*} TARGETS 
+ * @param {*} connection_id 
+ * @returns 
+ */
+
+
 export function calculatePerSecondMetrics(currentPeriod, previousPeriod, CUMULATIVE_KEYS, KEYS_TO_KEEP_AFTER_PER_SECOND_CALCULATIONS, TARGETS, connection_id) {
     const perSecondMetrics = {};
 
