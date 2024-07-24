@@ -321,8 +321,6 @@ export default function App() {
     onParticipantCountsUpdated: logEvent,
   });
 
-  const participantCounts = hidden + present;
-
   const { startRecording, stopRecording, isRecording } = useRecording({
     onRecordingData: logEvent,
     onRecordingError: logEvent,
@@ -337,6 +335,8 @@ export default function App() {
       },
     });
   }
+
+  const participantCounts = hidden + present;
 
   return (
     <>
