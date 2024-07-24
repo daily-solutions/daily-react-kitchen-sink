@@ -330,6 +330,8 @@ export default function App() {
 
   if (present === 2 && !isRecording) {
     startRecording({
+      // 10 minutes in ms
+      minIdleTimeOut: 600000,
       layout: {
         preset: "audio-only",
       },
