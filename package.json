@@ -11,6 +11,8 @@
     "@daily-co/daily-js": "^0.68.0",
     "@daily-co/daily-react": "^0.20.0",
     "@vitejs/plugin-react-swc": "^3.6.0",
+    "pixi-live2d-display": "file:../pixi-live2d-display",
+    "pixi.js": "^8.1.6",
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
     "recoil": "^0.7.7"
