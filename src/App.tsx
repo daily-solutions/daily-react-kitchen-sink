@@ -117,13 +117,6 @@ export default function App() {
     console.log("CPU Load:", cpuLoad);
   }
 
-  const { startRecording, stopRecording } = useRecording({
-    onRecordingData: logEvent,
-    onRecordingError: logEvent,
-    onRecordingStarted: logEvent,
-    onRecordingStopped: logEvent,
-  });
-
   useDailyEvent("joining-meeting", logEvent);
   useDailyEvent("track-started", logEvent);
   useDailyEvent("track-stopped", logEvent);
@@ -324,9 +317,26 @@ export default function App() {
   const currentMicrophone = microphones.find((m) => m.selected);
   const currentSpeaker = speakers.find((s) => s.selected);
 
+  const { startRecording, stopRecording, isRecording } = useRecording({
+    onRecordingData: logEvent,
+    onRecordingError: logEvent,
+    onRecordingStarted: logEvent,
+    onRecordingStopped: logEvent,
+  });
+
   const { hidden, present } = useParticipantCounts({
     onParticipantCountsUpdated: logEvent,
   });
+
+  if (present === 2 && !isRecording) {
+    startRecording({
+      // 10 minutes in ms
+      minIdleTimeOut: 600000,
+      layout: {
+        preset: "audio-only",
+      },
+    });
+  }
 
   const participantCounts = hidden + present;
 
