@@ -317,15 +317,15 @@ export default function App() {
   const currentMicrophone = microphones.find((m) => m.selected);
   const currentSpeaker = speakers.find((s) => s.selected);
 
-  const { hidden, present } = useParticipantCounts({
-    onParticipantCountsUpdated: logEvent,
-  });
-
   const { startRecording, stopRecording, isRecording } = useRecording({
     onRecordingData: logEvent,
     onRecordingError: logEvent,
     onRecordingStarted: logEvent,
     onRecordingStopped: logEvent,
+  });
+
+  const { hidden, present } = useParticipantCounts({
+    onParticipantCountsUpdated: logEvent,
   });
 
   if (present === 2 && !isRecording) {
