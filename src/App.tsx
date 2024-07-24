@@ -7,12 +7,14 @@ import Daily, {
 import {
   DailyAudio,
   DailyVideo,
+  useAudioTrack,
   useCPULoad,
   useDaily,
   useDailyError,
   useDailyEvent,
   useDevices,
   useInputSettings,
+  useLocalSessionId,
   useNetwork,
   useParticipantCounts,
   useParticipantIds,
@@ -51,6 +53,12 @@ export default function App() {
   if (cameraError) {
     console.error("Camera error:", cameraError);
   }
+
+  const localSessionId = useLocalSessionId();
+
+  const audioTrack = useAudioTrack(localSessionId);
+
+  console.log("audioTrack state", audioTrack.state);
 
   const { errorMsg, updateInputSettings } = useInputSettings({
     onError(ev) {
