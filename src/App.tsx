@@ -94,7 +94,16 @@ export default function App() {
       [callObject]
     ),
     onParticipantLeft: logEvent,
-    onParticipantUpdated: logEvent,
+    onParticipantUpdated: useCallback((evt: DailyEventObjectParticipant) => {
+      console.log(evt);
+      const { participant } = evt;
+      const status = {
+        videoEnabled: participant.tracks.video.state,
+        audioEnabled: participant.tracks.audio.state,
+        connected: true,
+      };
+      console.log(status);
+    }, []),
     onActiveSpeakerChange: logEvent,
   });
 
