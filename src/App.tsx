@@ -184,6 +184,22 @@ export default function App() {
     });
   };
 
+  const toggleKrisp = () => {
+    if (!callObject) {
+      return;
+    }
+
+    updateInputSettings({
+      audio: {
+        processor: {
+          type: noiseCancellationEnabled ? "none" : "noise-cancellation",
+        },
+      },
+    })?.catch((err) => {
+      console.error("Error enabling Krisp", err);
+    });
+  };
+
   // Join the room with the generated token
   const joinRoom = () => {
     if (!callObject) {
@@ -413,6 +429,19 @@ export default function App() {
           onClick={() => enableBackground()}
         >
           Enable Background
+        </button>
+        <br />
+        <button
+          disabled={noiseCancellationEnabled}
+          onClick={() => toggleKrisp()}
+        >
+          Enable Krisp
+        </button>
+        <button
+          disabled={!noiseCancellationEnabled}
+          onClick={() => toggleKrisp()}
+        >
+          Disable Krisp
         </button>
         <br />
         <button onClick={() => startScreenShare()}>Start Screen Share</button>
