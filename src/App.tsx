@@ -32,7 +32,6 @@ export default function App() {
   // @ts-expect-error add callObject to window for debugging
   window.callObject = callObject;
 
-  const [inputSettingsUpdated, setInputSettingsUpdated] = useState(false);
   const [enableBlurClicked, setEnableBlurClicked] = useState(false);
   const [enableBackgroundClicked, setEnableBackgroundClicked] = useState(false);
   const [dailyRoomUrl, setDailyRoomUrl] = useState("");
@@ -52,15 +51,17 @@ export default function App() {
     console.error("Camera error:", cameraError);
   }
 
-  const { errorMsg, updateInputSettings } = useInputSettings({
+  const { errorMsg, updateInputSettings, inputSettings } = useInputSettings({
     onError(ev) {
-      console.log("Input settings error (daily-react)", ev);
+      logEvent(ev);
     },
     onInputSettingsUpdated(ev) {
-      setInputSettingsUpdated(true);
-      console.log("Input settings updated (daily-react)", ev);
+      logEvent(ev);
     },
   });
+
+  const noiseCancellationEnabled =
+    inputSettings?.audio?.processor?.type === "noise-cancellation";
 
   const { startScreenShare, stopScreenShare, screens } = useScreenShare();
 
@@ -113,10 +114,6 @@ export default function App() {
     onCPULoadChange: logEvent,
   });
 
-  if (cpuLoad.state !== "low") {
-    console.log("CPU Load:", cpuLoad);
-  }
-
   const { startRecording, stopRecording } = useRecording({
     onRecordingData: logEvent,
     onRecordingError: logEvent,
@@ -128,7 +125,6 @@ export default function App() {
   useDailyEvent("track-started", logEvent);
   useDailyEvent("track-stopped", logEvent);
   useDailyEvent("started-camera", logEvent);
-  useDailyEvent("input-settings-updated", logEvent);
   useDailyEvent("loading", logEvent);
   useDailyEvent("loaded", logEvent);
   useDailyEvent("load-attempt-failed", logEvent);
@@ -144,9 +140,6 @@ export default function App() {
   if (nonFatalError) {
     logEvent(nonFatalError);
   }
-
-  // Error logging for background effects
-  useDailyEvent("input-settings-updated", logEvent);
 
   const enableBlur = () => {
     if (!callObject || enableBlurClicked) {
@@ -452,10 +445,13 @@ export default function App() {
       ))}
       <DailyAudio />
       <div id="meetingState">Meeting State: {callObject?.meetingState()}</div>
-      {inputSettingsUpdated && <div>Input settings updated</div>}
+      {inputSettings && <div>Input settings updated</div>}
       {errorMsg && <div id="errorMsg">{errorMsg}</div>}
       <div id="participantCount">Participant Counts: {participantCounts}</div>
       <div>Network quality: {network.quality}</div>
+      <div>
+        CPU load: {cpuLoad.state} {cpuLoad.reason}
+      </div>
     </>
   );
 }
