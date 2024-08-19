@@ -23,7 +23,10 @@ root.render(
     ) : (
       <DailyProvider
         subscribeToTracksAutomatically={false}
-        dailyConfig={{ useDevicePreferenceCookies: true }}
+        dailyConfig={{
+          useDevicePreferenceCookies: true,
+          micAudioMode: "music",
+        }}
       >
         <App />
       </DailyProvider>
