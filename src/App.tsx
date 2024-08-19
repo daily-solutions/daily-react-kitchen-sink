@@ -13,9 +13,11 @@ import {
   useDailyEvent,
   useDevices,
   useInputSettings,
+  useLocalSessionId,
   useNetwork,
   useParticipantCounts,
   useParticipantIds,
+  usePermissions,
   useRecording,
   useScreenShare,
   useTranscription,
@@ -104,6 +106,10 @@ export default function App() {
     onTranscriptionStarted: logEvent,
     onTranscriptionStopped: logEvent,
   });
+
+  // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
+  const { hasPresence } = usePermissions();
+  const hasPresenceBool = Boolean(hasPresence);
 
   const network = useNetwork({
     // onNetworkConnection: logEvent,
@@ -329,6 +335,19 @@ export default function App() {
     callObject.setLocalVideo(true);
   };
 
+  const localSessionId = useLocalSessionId();
+
+  const toggleParticipantPresence = () => {
+    if (!callObject) {
+      return;
+    }
+    callObject.updateParticipant(localSessionId, {
+      updatePermissions: {
+        hasPresence: !hasPresenceBool,
+      },
+    });
+  };
+
   const currentCamera = cameras.find((c) => c.selected);
   const currentMicrophone = microphones.find((m) => m.selected);
   const currentSpeaker = speakers.find((s) => s.selected);
@@ -456,6 +475,18 @@ export default function App() {
           Start Transcription
         </button>
         <button onClick={() => stopTranscription()}>Stop Transcription</button>
+        <button
+          disabled={hasPresenceBool}
+          onClick={() => toggleParticipantPresence()}
+        >
+          Enable Prescence
+        </button>
+        <button
+          disabled={!hasPresenceBool}
+          onClick={() => toggleParticipantPresence()}
+        >
+          Disable Prescence
+        </button>
       </div>
       {participantIds.map((id) => (
         <DailyVideo type="video" key={id} automirror sessionId={id} />
@@ -481,6 +512,7 @@ export default function App() {
       <div>
         CPU load: {cpuLoad.state} {cpuLoad.reason}
       </div>
+      <div>Local user has presence: {hasPresenceBool}</div>
     </>
   );
 }
