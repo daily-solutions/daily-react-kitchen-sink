@@ -339,6 +339,8 @@ export default function App() {
 
   const participantCounts = hidden + present;
 
+  const isPermissionGranted = String(cameras.length + microphones.length > 0);
+
   return (
     <>
       <div className="App">
@@ -456,6 +458,7 @@ export default function App() {
           Start Transcription
         </button>
         <button onClick={() => stopTranscription()}>Stop Transcription</button>
+        <p>Mic/Cam Permission Granted: {isPermissionGranted}</p>
       </div>
       {participantIds.map((id) => (
         <DailyVideo type="video" key={id} automirror sessionId={id} />
