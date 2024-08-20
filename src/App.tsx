@@ -13,6 +13,7 @@ import {
   useDailyEvent,
   useDevices,
   useInputSettings,
+  useLiveStreaming,
   useNetwork,
   useParticipantCounts,
   useParticipantIds,
@@ -120,6 +121,15 @@ export default function App() {
     onRecordingStarted: logEvent,
     onRecordingStopped: logEvent,
   });
+
+  const { startLiveStreaming, stopLiveStreaming, isLiveStreaming } =
+    useLiveStreaming({
+      onLiveStreamingError: logEvent,
+      onLiveStreamingStarted: logEvent,
+      onLiveStreamingStopped: logEvent,
+      onLiveStreamingUpdated: logEvent,
+      onLiveStreamingWarning: logEvent,
+    });
 
   useDailyEvent("joining-meeting", logEvent);
   useDailyEvent("track-started", logEvent);
@@ -377,7 +387,7 @@ export default function App() {
         <br />
         <hr />
         <br />
-        2. Select your device <br />
+        3. Select your device <br />
         <select
           id="video-devices"
           value={currentCamera?.device?.deviceId}
@@ -421,6 +431,7 @@ export default function App() {
         </select>
         <br />
         <br />
+        4. Change call options <br />
         <button disabled={enableBlurClicked} onClick={() => enableBlur()}>
           Enable Blur
         </button>
@@ -450,7 +461,22 @@ export default function App() {
         <button onClick={() => stopCamera()}>Camera Off</button>
         <button onClick={() => updateCameraOn()}>Camera On</button> <br />
         <button onClick={() => startRecording()}>Start Recording</button>
-        <button onClick={() => stopRecording()}>Stop Recording</button>
+        <button onClick={() => stopRecording()}>Stop Recording</button> <br />
+        <button
+          disabled={isLiveStreaming}
+          onClick={() => {
+            console.log("isLiveStreaming", isLiveStreaming);
+            if (isLiveStreaming) {
+              stopLiveStreaming();
+            } else {
+              startLiveStreaming({
+                rtmpUrl: "YOUR RTMP URL", // Something like: rtmp://DOMAIN.rtmp.youtube.com/live2/STREAM_KEY
+              });
+            }
+          }}
+        >
+          Toggle Live Streaming
+        </button>{" "}
         <br />
         <button onClick={() => startTranscription()}>
           Start Transcription
