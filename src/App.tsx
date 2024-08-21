@@ -277,8 +277,6 @@ export default function App() {
   ) => {
     if (!callObject) return;
 
-    console.log("currentMic: ", mic);
-
     navigator.mediaDevices
       .getUserMedia({
         audio: {
@@ -291,16 +289,6 @@ export default function App() {
       .then((mediaStream) => {
         const audioTracks = mediaStream.getAudioTracks();
         const audioSource = audioTracks[0];
-
-        console.log("toggleCustomAudioTrack audioSource: ", audioSource);
-        console.log(
-          "audioSource: noiseSuppression: ",
-          audioSource.getSettings().noiseSuppression
-        );
-        console.log(
-          "audioSource: deviceId: ",
-          audioSource.getSettings().deviceId
-        );
 
         return callObject.setInputDevicesAsync({
           audioSource,
