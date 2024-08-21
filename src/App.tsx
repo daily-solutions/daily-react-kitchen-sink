@@ -41,11 +41,9 @@ export default function App() {
     cameraError,
     cameras,
     currentCam,
-    currentMic,
     currentSpeaker,
     microphones,
     setCamera,
-    setMicrophone,
     setSpeaker,
     speakers,
   } = useDevices();
@@ -223,7 +221,6 @@ export default function App() {
       .catch((err) => {
         console.error("Error joining room:", err);
       });
-    console.log("joined!");
   };
 
   const startCamera = () => {
@@ -271,6 +268,57 @@ export default function App() {
       });
   };
 
+  const [browserNoiseSuppressionEnabled, setBrowserNoiseSuppressionEnabled] =
+    useState(false);
+
+  const setCustomAudioTrack = (
+    mic: string | undefined,
+    noiseSuppression: boolean
+  ) => {
+    if (!callObject) return;
+
+    console.log("currentMic: ", mic);
+
+    navigator.mediaDevices
+      .getUserMedia({
+        audio: {
+          deviceId: mic ? { exact: mic } : undefined,
+          autoGainControl: false,
+          echoCancellation: true,
+          noiseSuppression: { exact: noiseSuppression },
+        },
+      })
+      .then((mediaStream) => {
+        const audioTracks = mediaStream.getAudioTracks();
+        const audioSource = audioTracks[0];
+
+        console.log("toggleCustomAudioTrack audioSource: ", audioSource);
+        console.log(
+          "audioSource: noiseSuppression: ",
+          audioSource.getSettings().noiseSuppression
+        );
+        console.log(
+          "audioSource: deviceId: ",
+          audioSource.getSettings().deviceId
+        );
+
+        return callObject.setInputDevicesAsync({
+          audioSource,
+        });
+      })
+      .catch((err) => {
+        console.error("Error getting custom audio track: ", err);
+
+        if (err instanceof OverconstrainedError) {
+          // Handle error
+          // console.error("OverconstrainedError: ", JSON.stringify(err));
+        }
+      })
+      .finally(() => {
+        setBrowserNoiseSuppressionEnabled(noiseSuppression);
+      });
+  };
+
   const preAuth = () => {
     if (!callObject) {
       return;
@@ -304,11 +352,12 @@ export default function App() {
     });
   };
 
+  const [currentMic, setMic] = useState("default");
+
   // change mic device
   const handleChangeMicDevice = (ev: React.ChangeEvent<HTMLSelectElement>) => {
-    setMicrophone(ev.target.value)?.catch((err) => {
-      console.error("Error setting microphone", err);
-    });
+    setCustomAudioTrack(ev.target.value, browserNoiseSuppressionEnabled);
+    setMic(ev.target.value);
   };
 
   // change speaker device
@@ -399,7 +448,7 @@ export default function App() {
         <br />
         <select
           id="mic-devices"
-          value={currentMic?.device?.deviceId}
+          value={currentMic}
           onChange={handleChangeMicDevice}
         >
           {microphones.map((microphone) => (
@@ -436,6 +485,14 @@ export default function App() {
           onClick={() => enableBackground()}
         >
           Enable Background
+        </button>
+        <br />
+        <button
+          onClick={() => {
+            setCustomAudioTrack(currentMic, !browserNoiseSuppressionEnabled);
+          }}
+        >
+          Toggle Custom Audio
         </button>
         <br />
         <button
