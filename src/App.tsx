@@ -38,13 +38,16 @@ export default function App() {
   const [dailyMeetingToken, setDailyMeetingToken] = useState("");
 
   const {
-    cameras,
-    setCamera,
-    microphones,
-    setMicrophone,
-    speakers,
-    setSpeaker,
     cameraError,
+    cameras,
+    currentCam,
+    currentMic,
+    currentSpeaker,
+    microphones,
+    setCamera,
+    setMicrophone,
+    setSpeaker,
+    speakers,
   } = useDevices();
 
   if (cameraError) {
@@ -331,10 +334,6 @@ export default function App() {
     callObject.setLocalVideo(true);
   };
 
-  const currentCamera = cameras.find((c) => c.selected);
-  const currentMicrophone = microphones.find((m) => m.selected);
-  const currentSpeaker = speakers.find((s) => s.selected);
-
   const { hidden, present } = useParticipantCounts({
     onParticipantCountsUpdated: logEvent,
   });
@@ -382,7 +381,7 @@ export default function App() {
         2. Select your device <br />
         <select
           id="video-devices"
-          value={currentCamera?.device?.deviceId}
+          value={currentCam?.device?.deviceId}
           onChange={handleChangeVideoDevice}
         >
           {cameras.map((cam) => (
@@ -394,7 +393,7 @@ export default function App() {
         <br />
         <select
           id="mic-devices"
-          value={currentMicrophone?.device?.deviceId}
+          value={currentMic?.device?.deviceId}
           onChange={handleChangeMicDevice}
         >
           {microphones.map((microphone) => (
