@@ -63,7 +63,8 @@ export default function App() {
   const noiseCancellationEnabled =
     inputSettings?.audio?.processor?.type === "noise-cancellation";
 
-  const { startScreenShare, stopScreenShare, screens } = useScreenShare();
+  const { startScreenShare, stopScreenShare, screens, isSharingScreen } =
+    useScreenShare();
 
   const logEvent = useCallback((evt: DailyEventObject) => {
     if ("action" in evt) {
@@ -98,12 +99,13 @@ export default function App() {
     onActiveSpeakerChange: logEvent,
   });
 
-  const { startTranscription, stopTranscription } = useTranscription({
-    onTranscriptionAppData: logEvent,
-    onTranscriptionError: logEvent,
-    onTranscriptionStarted: logEvent,
-    onTranscriptionStopped: logEvent,
-  });
+  const { startTranscription, stopTranscription, isTranscribing } =
+    useTranscription({
+      onTranscriptionAppData: logEvent,
+      onTranscriptionError: logEvent,
+      onTranscriptionStarted: logEvent,
+      onTranscriptionStopped: logEvent,
+    });
 
   const network = useNetwork({
     // onNetworkConnection: logEvent,
@@ -114,7 +116,7 @@ export default function App() {
     onCPULoadChange: logEvent,
   });
 
-  const { startRecording, stopRecording } = useRecording({
+  const { startRecording, stopRecording, isRecording } = useRecording({
     onRecordingData: logEvent,
     onRecordingError: logEvent,
     onRecordingStarted: logEvent,
@@ -435,27 +437,42 @@ export default function App() {
           disabled={noiseCancellationEnabled}
           onClick={() => toggleKrisp()}
         >
-          Enable Krisp
-        </button>
-        <button
-          disabled={!noiseCancellationEnabled}
-          onClick={() => toggleKrisp()}
-        >
-          Disable Krisp
+          Toggle Krisp
         </button>
         <br />
-        <button onClick={() => startScreenShare()}>Start Screen Share</button>
-        <button onClick={() => stopScreenShare()}>Stop Screen Share</button>
+        <button
+          disabled={isSharingScreen}
+          onClick={() => {
+            if (isSharingScreen) {
+              stopScreenShare();
+            } else {
+              startScreenShare();
+            }
+          }}
+        >
+          Toggle Screen Share
+        </button>
         <br />
         <button onClick={() => stopCamera()}>Camera Off</button>
         <button onClick={() => updateCameraOn()}>Camera On</button> <br />
-        <button onClick={() => startRecording()}>Start Recording</button>
-        <button onClick={() => stopRecording()}>Stop Recording</button>
-        <br />
-        <button onClick={() => startTranscription()}>
-          Start Transcription
+        <button disabled={isRecording} onClick={() => startRecording()}>
+          Start Recording
         </button>
-        <button onClick={() => stopTranscription()}>Stop Transcription</button>
+        <button disabled={!isRecording} onClick={() => stopRecording()}>
+          Stop Recording
+        </button>
+        <br />
+        <button
+          onClick={() => {
+            if (isTranscribing) {
+              stopTranscription();
+            } else {
+              startTranscription();
+            }
+          }}
+        >
+          Toggle Transcription
+        </button>
       </div>
       {participantIds.map((id) => (
         <DailyVideo type="video" key={id} automirror sessionId={id} />
