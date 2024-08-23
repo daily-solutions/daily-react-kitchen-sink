@@ -34,7 +34,7 @@ export default function App() {
 
   const [enableBlurClicked, setEnableBlurClicked] = useState(false);
   const [enableBackgroundClicked, setEnableBackgroundClicked] = useState(false);
-  const [dailyRoomUrl, setDailyRoomUrl] = useState("");
+  const [dailyRoomUrl, setDailyRoomUrl] = useState("https://hush.daily.co/sfu");
   const [dailyMeetingToken, setDailyMeetingToken] = useState("");
 
   const {
@@ -269,7 +269,7 @@ export default function App() {
   };
 
   const [browserNoiseSuppressionEnabled, setBrowserNoiseSuppressionEnabled] =
-    useState(false);
+    useState<boolean>(false);
 
   const setCustomAudioTrack = (
     mic: string | undefined,
@@ -290,6 +290,15 @@ export default function App() {
         const audioTracks = mediaStream.getAudioTracks();
         const audioSource = audioTracks[0];
 
+        console.log(
+          "Setting custom audio track: noiseSuppression",
+          audioSource.getSettings().noiseSuppression
+        );
+
+        setBrowserNoiseSuppressionEnabled(
+          audioSource.getSettings().noiseSuppression ?? false
+        );
+
         return callObject.setInputDevicesAsync({
           audioSource,
         });
@@ -298,12 +307,8 @@ export default function App() {
         console.error("Error getting custom audio track: ", err);
 
         if (err instanceof OverconstrainedError) {
-          // Handle error
-          // console.error("OverconstrainedError: ", JSON.stringify(err));
+          console.error("example error: ", err.constraint);
         }
-      })
-      .finally(() => {
-        setBrowserNoiseSuppressionEnabled(noiseSuppression);
       });
   };
 
@@ -369,6 +374,13 @@ export default function App() {
       return;
     }
     callObject.setLocalVideo(true);
+  };
+
+  const toggleMic = () => {
+    if (!callObject) {
+      return;
+    }
+    callObject.setLocalAudio(!callObject.localAudio());
   };
 
   const { hidden, present } = useParticipantCounts({
@@ -465,6 +477,14 @@ export default function App() {
         </select>
         <br />
         <br />
+        <button
+          onClick={() => {
+            setCustomAudioTrack(currentMic, !browserNoiseSuppressionEnabled);
+          }}
+        >
+          Toggle Browser Noise Suppression
+        </button>
+        <br />
         <button disabled={enableBlurClicked} onClick={() => enableBlur()}>
           Enable Blur
         </button>
@@ -473,14 +493,6 @@ export default function App() {
           onClick={() => enableBackground()}
         >
           Enable Background
-        </button>
-        <br />
-        <button
-          onClick={() => {
-            setCustomAudioTrack(currentMic, !browserNoiseSuppressionEnabled);
-          }}
-        >
-          Toggle Custom Audio
         </button>
         <br />
         <button
@@ -503,6 +515,7 @@ export default function App() {
           Toggle Screen Share
         </button>
         <br />
+        <button onClick={() => toggleMic()}>Toggle Mic</button>
         <button onClick={() => stopCamera()}>Camera Off</button>
         <button onClick={() => updateCameraOn()}>Camera On</button> <br />
         <button disabled={isRecording} onClick={() => startRecording()}>
