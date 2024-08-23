@@ -369,11 +369,17 @@ export default function App() {
         />
         <br />
         <button onClick={() => load()}>Load</button> <br />
-        <button onClick={() => preAuth()}>Preauth</button> <br />
+        <button disabled={!dailyRoomUrl.length} onClick={() => preAuth()}>
+          Preauth
+        </button>
+        <br />
         <button onClick={() => startCamera()}>Start Camera</button> <br />
         <button onClick={() => startCustomTrack()}>Start Custom Track</button>
         <br />
-        <button onClick={() => joinRoom()}>Join call</button> <br />
+        <button disabled={!dailyRoomUrl.length} onClick={() => joinRoom()}>
+          Join call
+        </button>
+        <br />
         <button onClick={() => leaveRoom()}>Leave call</button>
         <br />
         <hr />
