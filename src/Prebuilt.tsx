@@ -6,9 +6,17 @@ import {
   useDaily,
   useParticipantCounts,
 } from "@daily-co/daily-react";
+import { RecoilRoot, useRecoilSnapshot } from "recoil";
 
 const App = () => {
   const callObject = useDaily();
+  const snapshot = useRecoilSnapshot();
+  useEffect(() => {
+    console.debug("The following atoms were modified:");
+    for (const node of snapshot.getNodes_UNSTABLE({ isModified: true })) {
+      console.debug(node.key, snapshot.getLoadable(node));
+    }
+  }, [snapshot]);
 
   // @ts-expect-error debugging
   window.callObject = callObject;
@@ -47,9 +55,17 @@ export const Prebuilt = () => {
     });
   }, [callFrame]);
   return (
-    <DailyProvider callObject={callFrame}>
-      <div ref={wrapperRef} />
-      <App />
-    </DailyProvider>
+    <RecoilRoot>
+      <DailyProvider
+        callObject={callFrame}
+        recoilRootProps={{
+          // stores Daily React's state in RecoilRoot above
+          override: false,
+        }}
+      >
+        <div ref={wrapperRef} />
+        <App />
+      </DailyProvider>
+    </RecoilRoot>
   );
 };
