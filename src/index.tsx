@@ -14,7 +14,7 @@ const root = createRoot(container);
 
 // Get the value from the url
 const urlParams = new URLSearchParams(window.location.search);
-const isPrebuilt = urlParams.get("prebuilt") ?? false;
+const isPrebuilt = urlParams.get("prebuilt") ?? true;
 
 root.render(
   <StrictMode>
