@@ -13,6 +13,7 @@ import {
   useDailyEvent,
   useDevices,
   useInputSettings,
+  useMeetingState,
   useNetwork,
   useParticipantCounts,
   useParticipantIds,
@@ -340,6 +341,8 @@ export default function App() {
 
   const participantCounts = hidden + present;
 
+  const meetingState = useMeetingState();
+
   return (
     <>
       <div className="App">
@@ -495,7 +498,7 @@ export default function App() {
         <DailyVideo type="customTrack" key={id} automirror sessionId={id} />
       ))}
       <DailyAudio />
-      <div id="meetingState">Meeting State: {callObject?.meetingState()}</div>
+      <div id="meetingState">Meeting State: {meetingState}</div>
       {inputSettings && <div>Input settings updated</div>}
       {errorMsg && <div id="errorMsg">{errorMsg}</div>}
       <div id="participantCount">Participant Counts: {participantCounts}</div>
