@@ -1,4 +1,4 @@
-import React, { useCallback, useState } from "react";
+import React, { useCallback, useEffect, useState } from "react";
 import Daily, {
   DailyEventObject,
   DailyEventObjectParticipant,
@@ -23,6 +23,7 @@ import {
 } from "@daily-co/daily-react";
 
 import "./styles.css";
+import { useVCS } from "./useVCS";
 
 console.info("Daily version: %s", Daily.version());
 console.info("Daily supported Browser:");
@@ -35,8 +36,17 @@ export default function App() {
 
   const [enableBlurClicked, setEnableBlurClicked] = useState(false);
   const [enableBackgroundClicked, setEnableBackgroundClicked] = useState(false);
-  const [dailyRoomUrl, setDailyRoomUrl] = useState("");
+  const [dailyRoomUrl, setDailyRoomUrl] = useState("https://hush.daily.co/sfu");
   const [dailyMeetingToken, setDailyMeetingToken] = useState("");
+  const [dailyParticipantName, setDailyParticipantName] =
+    useState("VCS Participant");
+
+  useEffect(() => {
+    if (!callObject) return;
+    callObject.setUserName(dailyParticipantName).catch((err) => {
+      console.error("Error setting user name", err);
+    });
+  }, [dailyParticipantName, callObject]);
 
   const {
     cameraError,
@@ -428,6 +438,17 @@ export default function App() {
           }}
         />
         <br />
+        2. Change participant name (optional).
+        <br />
+        <input
+          type="text"
+          value={dailyParticipantName}
+          onChange={(event) => {
+            setDailyParticipantName(event.target.value);
+          }}
+        />
+        <br />
+        <br />
         <button onClick={() => load()}>Load</button> <br />
         <button disabled={!dailyRoomUrl.length} onClick={() => preAuth()}>
           Preauth
@@ -444,6 +465,13 @@ export default function App() {
         <br />
         <button onClick={() => toggleRemoteMedia()}>
           Toggle Remote Media Player
+        </button>
+        <button
+          onClick={() => {
+            console.log("click start vcs");
+          }}
+        >
+          Start VCS
         </button>
         <hr />
         <br />
@@ -542,26 +570,9 @@ export default function App() {
           Toggle Transcription
         </button>
       </div>
-      {participantIds.map((id) => (
-        <DailyVideo type="video" key={id} automirror sessionId={id} />
-      ))}
-      {screens.map((screen) => (
-        <DailyVideo
-          type="screenVideo"
-          key={screen.screenId}
-          automirror
-          sessionId={screen.session_id}
-        />
-      ))}
-      {participantIds.map((id) => (
-        // @ts-expect-error This works just fine but gives a typescript error
-        <DailyVideo type="customTrack" key={id} automirror sessionId={id} />
-      ))}
-      {rmpParticipantIds.map((id) => (
-        <DailyVideo type="rmpVideo" key={id} automirror sessionId={id} />
-      ))}
 
-      <DailyAudio />
+      <VCSPlayer />
+
       <div id="meetingState">Meeting State: {meetingState}</div>
       {inputSettings && <div>Input settings updated</div>}
       {errorMsg && <div id="errorMsg">{errorMsg}</div>}
@@ -575,3 +586,47 @@ export default function App() {
     </>
   );
 }
+
+const VCSPlayer = () => {
+  const participantIds = useParticipantIds({ sort: "joined_at" });
+  const { vcsContainerRef, vcsCompRef } = useVCS({
+    orderedParticipantIds: participantIds,
+    aspectRatio: 20,
+  });
+
+  const state = vcsCompRef.current?.state ?? "unknown";
+
+  return (
+    <div>
+      <p>VCS State: {state}</p>
+      <button
+        onClick={() => {
+          if (vcsCompRef.current !== null) {
+            vcsCompRef.current.start().catch((err) => {
+              console.error(err);
+            });
+            console.log("vcsCompRef.current", vcsCompRef.current);
+          }
+        }}
+      >
+        Start VCS
+      </button>
+      <button
+        onClick={() => {
+          if (vcsCompRef.current !== null) {
+            vcsCompRef.current.stop();
+            console.log("vcsCompRef.current", vcsCompRef.current);
+          }
+        }}
+      >
+        Stop VCS
+      </button>
+
+      <div
+        id="divRef"
+        style={{ width: "50%", height: "50%" }}
+        ref={vcsContainerRef}
+      ></div>
+    </div>
+  );
+};
