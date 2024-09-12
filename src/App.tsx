@@ -3,7 +3,6 @@ import Daily, {
   DailyEventObject,
   DailyEventObjectAppMessage,
   DailyEventObjectParticipant,
-  DailyEventObjectParticipantLeft,
 } from "@daily-co/daily-js";
 
 import {
@@ -26,7 +25,6 @@ import {
 } from "@daily-co/daily-react";
 
 import "./styles.css";
-import { log } from "console";
 
 console.info("Daily version: %s", Daily.version());
 console.info("Daily supported Browser:");
