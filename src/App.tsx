@@ -1,12 +1,15 @@
 import React, { useCallback, useState } from "react";
 import Daily, {
   DailyEventObject,
+  DailyEventObjectAppMessage,
   DailyEventObjectParticipant,
+  DailyEventObjectParticipantLeft,
 } from "@daily-co/daily-js";
 
 import {
   DailyAudio,
   DailyVideo,
+  useAppMessage,
   useCPULoad,
   useDaily,
   useDailyError,
@@ -23,6 +26,7 @@ import {
 } from "@daily-co/daily-react";
 
 import "./styles.css";
+import { log } from "console";
 
 console.info("Daily version: %s", Daily.version());
 console.info("Daily supported Browser:");
@@ -78,6 +82,28 @@ export default function App() {
       console.log("logEvent:", evt);
     }
   }, []);
+
+  interface AppMessage {
+    leaveIn60s: boolean;
+  }
+
+  const sendAppMessage = useAppMessage<AppMessage>({
+    onAppMessage: useCallback(
+      (ev: DailyEventObjectAppMessage<AppMessage>) => {
+        logEvent(ev);
+        if (!callObject) return;
+
+        if (ev.data.leaveIn60s) {
+          setTimeout(() => {
+            callObject.leave().catch((err) => {
+              console.error("Error leaving room:", err);
+            });
+          }, 60000);
+        }
+      },
+      [logEvent, callObject]
+    ),
+  });
 
   const participantIds = useParticipantIds({
     onParticipantJoined: useCallback(
@@ -290,6 +316,8 @@ export default function App() {
     if (!callObject) {
       return;
     }
+    sendAppMessage({ leaveIn60s: true });
+
     callObject.leave().catch((err) => {
       console.error("Error leaving room:", err);
     });
