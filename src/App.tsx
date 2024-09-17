@@ -1,4 +1,4 @@
-import React, { useCallback, useState } from "react";
+import React, { useCallback, useEffect, useState } from "react";
 import Daily, {
   DailyEventObject,
   DailyEventObjectParticipant,
@@ -361,9 +361,11 @@ export default function App() {
     }
   }, [setCounter, counter]);
 
-  if (counter === 4) {
-    startRecording();
-  }
+  useEffect(() => {
+    if (counter === 4) {
+      startRecording();
+    }
+  }, [counter]);
 
   return (
     <>
