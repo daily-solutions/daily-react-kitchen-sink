@@ -350,11 +350,9 @@ export default function App() {
     onRecordingStopped: logEvent,
   });
 
-  console.log("counter :", counter);
   const startRecordingTimer = useCallback(() => {
     if (counter === 5) {
       const id = setInterval(() => {
-        console.log("counter in interval :", counter);
         setCounter((prev) => prev - 1);
       }, 1000);
       setIntervalId(id);
@@ -365,7 +363,7 @@ export default function App() {
     if (counter === 4) {
       startRecording();
     }
-  }, [counter]);
+  }, [counter, startRecording]);
 
   return (
     <>
