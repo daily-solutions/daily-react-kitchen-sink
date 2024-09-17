@@ -35,7 +35,7 @@ export default function App() {
 
   const [enableBlurClicked, setEnableBlurClicked] = useState(false);
   const [enableBackgroundClicked, setEnableBackgroundClicked] = useState(false);
-  const [dailyRoomUrl, setDailyRoomUrl] = useState("");
+  const [dailyRoomUrl, setDailyRoomUrl] = useState("https://hush.daily.co/sfu");
   const [dailyMeetingToken, setDailyMeetingToken] = useState("");
 
   const {
@@ -118,13 +118,6 @@ export default function App() {
 
   const cpuLoad = useCPULoad({
     onCPULoadChange: logEvent,
-  });
-
-  const { startRecording, stopRecording, isRecording } = useRecording({
-    onRecordingData: logEvent,
-    onRecordingError: logEvent,
-    onRecordingStarted: logEvent,
-    onRecordingStopped: logEvent,
   });
 
   useDailyEvent("joining-meeting", logEvent);
@@ -343,9 +336,42 @@ export default function App() {
 
   const meetingState = useMeetingState();
 
+  const [counter, setCounter] = useState<number>(5);
+  const [intervalId, setIntervalId] = useState<NodeJS.Timeout | null>(null);
+
+  const { startRecording, stopRecording, isRecording } = useRecording({
+    onRecordingData: logEvent,
+    onRecordingError: logEvent,
+    onRecordingStarted: useCallback(() => {
+      if (intervalId) {
+        clearInterval(intervalId);
+      }
+    }, [counter, intervalId]),
+    onRecordingStopped: logEvent,
+  });
+
+  console.log("counter :", counter);
+  const startRecordingTimer = useCallback(() => {
+    if (counter === 5) {
+      const id = setInterval(() => {
+        console.log("counter in interval :", counter);
+        setCounter((prev) => prev - 1);
+      }, 1000);
+      setIntervalId(id);
+    }
+  }, [setCounter, counter]);
+
+  if (counter === 4) {
+    startRecording();
+  }
+
   return (
     <>
       <div className="App">
+        <h1>
+          {!isRecording ? `Recording starting` : null}{" "}
+          {counter > 0 ? ` in: ${counter} seconds` : null}
+        </h1>
         <br />
         1. Join the call
         <br />
@@ -463,7 +489,7 @@ export default function App() {
         <br />
         <button onClick={() => stopCamera()}>Camera Off</button>
         <button onClick={() => updateCameraOn()}>Camera On</button> <br />
-        <button disabled={isRecording} onClick={() => startRecording()}>
+        <button disabled={isRecording} onClick={startRecordingTimer}>
           Start Recording
         </button>
         <button disabled={!isRecording} onClick={() => stopRecording()}>
