@@ -2,10 +2,12 @@ import "./styles.css";
 import { useCallback, useEffect, useRef } from "react";
 import {
   DailyProvider,
+  useAppMessage,
   useCallFrame,
   useDaily,
   useParticipantCounts,
 } from "@daily-co/daily-react";
+import { DailyEventObjectAppMessage } from "@daily-co/daily-js";
 
 const App = () => {
   const callObject = useDaily();
@@ -15,8 +17,42 @@ const App = () => {
 
   const participantCount = useParticipantCounts();
 
+  type PrebuiltAppMessage = DailyEventObjectAppMessage<{
+    date: string;
+    event: "chat-msg"; // There's other events too
+    message: string;
+    name: string;
+    room: string;
+  }>;
+
+  const sendAppMessage = useAppMessage({
+    onAppMessage: useCallback((message: PrebuiltAppMessage) => {
+      console.log(message);
+      switch (message.data.event) {
+        case "chat-msg":
+          console.log("Chat message:", message.data.message);
+          break;
+        default:
+          console.log("Unknown event:", message.data.event);
+      }
+    }, []),
+  });
+
   return (
     <>
+      <button
+        onClick={() =>
+          sendAppMessage({
+            event: "chat-msg",
+            date: Date.now().toString(),
+            message: "Hello from button!",
+            name: "button",
+            room: "main-room",
+          })
+        }
+      >
+        Send message
+      </button>
       <span>{participantCount.present} participants</span>
     </>
   );
