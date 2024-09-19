@@ -501,7 +501,9 @@ export default function App() {
       <div id="meetingState">Meeting State: {meetingState}</div>
       {inputSettings && <div>Input settings updated</div>}
       {errorMsg && <div id="errorMsg">{errorMsg}</div>}
-      <div id="participantCount">Participant Counts: {participantCounts}</div>
+      <div id="participantCount">Total Participants: {participantCounts}</div>
+      <div>Present Participants: {present}</div>
+      <div>Hidden Participants: {hidden}</div>
       <div>Network quality: {network.quality}</div>
       <div>
         CPU load: {cpuLoad.state} {cpuLoad.reason}
