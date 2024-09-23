@@ -9,6 +9,7 @@ import {
   useParticipantIds,
 } from "@daily-co/daily-react";
 import {
+  DailyEventObject,
   DailyEventObjectAppMessage,
   DailyEventObjectParticipant,
 } from "@daily-co/daily-js";
@@ -36,7 +37,6 @@ const App = () => {
     }, []),
     onParticipantLeft: logEvent,
     onParticipantUpdated: logEvent,
-    
   });
 
   type PrebuiltAppMessage = DailyEventObjectAppMessage<{
