@@ -6,8 +6,12 @@ import {
   useCallFrame,
   useDaily,
   useParticipantCounts,
+  useParticipantIds,
 } from "@daily-co/daily-react";
-import { DailyEventObjectAppMessage } from "@daily-co/daily-js";
+import {
+  DailyEventObjectAppMessage,
+  DailyEventObjectParticipant,
+} from "@daily-co/daily-js";
 
 const App = () => {
   const callObject = useDaily();
@@ -16,6 +20,24 @@ const App = () => {
   window.callObject = callObject;
 
   const participantCount = useParticipantCounts();
+
+  const logEvent = useCallback((evt: DailyEventObject) => {
+    if ("action" in evt) {
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
+      console.log(`logEvent: ${evt.action}`, evt);
+    } else {
+      console.log("logEvent:", evt);
+    }
+  }, []);
+
+  useParticipantIds({
+    onParticipantJoined: useCallback((ev: DailyEventObjectParticipant) => {
+      logEvent(ev);
+    }, []),
+    onParticipantLeft: logEvent,
+    onParticipantUpdated: logEvent,
+    
+  });
 
   type PrebuiltAppMessage = DailyEventObjectAppMessage<{
     date: string;
