@@ -96,7 +96,7 @@ export default function App() {
           },
         });
       },
-      [callObject]
+      [callObject, logEvent]
     ),
     onParticipantLeft: logEvent,
     onParticipantUpdated: logEvent,

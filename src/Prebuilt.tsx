@@ -11,7 +11,6 @@ import {
 import {
   DailyEventObject,
   DailyEventObjectAppMessage,
-  DailyEventObjectParticipant,
 } from "@daily-co/daily-js";
 
 const App = () => {
@@ -32,9 +31,7 @@ const App = () => {
   }, []);
 
   useParticipantIds({
-    onParticipantJoined: useCallback((ev: DailyEventObjectParticipant) => {
-      logEvent(ev);
-    }, []),
+    onParticipantJoined: logEvent,
     onParticipantLeft: logEvent,
     onParticipantUpdated: logEvent,
   });

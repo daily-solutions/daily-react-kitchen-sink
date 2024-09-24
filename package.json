@@ -8,7 +8,7 @@
     "npm": ">=8.0.0"
   },
   "dependencies": {
-    "@daily-co/daily-js": "^0.71.2",
+    "@daily-co/daily-js": "^0.70.0",
     "@daily-co/daily-react": "^0.20.0",
     "@vitejs/plugin-react-swc": "^3.6.0",
     "react": "^18.2.0",
@@ -40,6 +40,7 @@
     "@types/react-dom": "^18.0.10",
     "eslint": "^8.57.0",
     "eslint-plugin-react": "^7.34.1",
+    "eslint-plugin-react-hooks": "^4.6.2",
     "typescript": "^5.4.5",
     "typescript-eslint": "^7.4.0",
     "vite": "^5.2.11",
