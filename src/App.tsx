@@ -55,6 +55,15 @@ export default function App() {
     console.error("Camera error:", cameraError);
   }
 
+  const logEvent = useCallback((evt: DailyEventObject) => {
+    if ("action" in evt) {
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
+      console.log(`logEvent: ${evt.action}`, evt);
+    } else {
+      console.log("logEvent:", evt);
+    }
+  }, []);
+
   const { errorMsg, updateInputSettings, inputSettings } = useInputSettings({
     onError(ev) {
       logEvent(ev);
@@ -69,15 +78,6 @@ export default function App() {
 
   const { startScreenShare, stopScreenShare, screens, isSharingScreen } =
     useScreenShare();
-
-  const logEvent = useCallback((evt: DailyEventObject) => {
-    if ("action" in evt) {
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
-      console.log(`logEvent: ${evt.action}`, evt);
-    } else {
-      console.log("logEvent:", evt);
-    }
-  }, []);
 
   const participantIds = useParticipantIds({
     onParticipantJoined: useCallback(
@@ -127,6 +127,7 @@ export default function App() {
     onRecordingStopped: logEvent,
   });
 
+  useDailyEvent("load-attempt-failed", logEvent);
   useDailyEvent("joining-meeting", logEvent);
   useDailyEvent("track-started", logEvent);
   useDailyEvent("track-stopped", logEvent);
