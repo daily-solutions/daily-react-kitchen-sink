@@ -363,10 +363,8 @@ export default function App() {
       .then((res) => res.json())
       .then((data) => {
         console.log("Room created", data);
-        if ("url" in data) {
-          // eslint-disable-next-line @typescript-eslint/no-unsafe-argument, @typescript-eslint/no-unsafe-member-access
-          setDailyRoomUrl(data.url);
-        }
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-argument, @typescript-eslint/no-unsafe-member-access
+        setDailyRoomUrl(data.url);
       })
       .catch((err) => {
         console.error("Error creating room", err);
@@ -391,10 +389,8 @@ export default function App() {
       .then((res) => res.json())
       .then((data) => {
         console.log("Token created", data);
-        if ("token" in data) {
-          // eslint-disable-next-line @typescript-eslint/no-unsafe-argument, @typescript-eslint/no-unsafe-member-access
-          setDailyMeetingToken(data.token);
-        }
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-argument, @typescript-eslint/no-unsafe-member-access
+        setDailyMeetingToken(data.token);
       })
       .catch((err) => {
         console.error("Error creating room", err);
