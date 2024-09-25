@@ -23,6 +23,14 @@ root.render(
     ) : (
       <DailyProvider
         subscribeToTracksAutomatically={false}
+        inputSettings={{
+          video: {
+            settings: {
+              width: 640,
+              height: 360,
+            },
+          },
+        }}
         dailyConfig={{ useDevicePreferenceCookies: true }}
       >
         <App />
