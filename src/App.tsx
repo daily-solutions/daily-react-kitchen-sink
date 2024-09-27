@@ -93,6 +93,9 @@ export default function App() {
             custom: true,
             screenAudio: true,
             screenVideo: true,
+            // @ts-expect-error rmp is in beta
+            rmpAudio: true,
+            rmpVideo: true,
           },
         });
       },
@@ -182,7 +185,7 @@ export default function App() {
           type: "background-image",
           config: {
             source:
-              "https://docs.daily.co/assets/guides-large-meetings-hero.jpeg",
+              "https://assets.timelycare.com/images/provider-video-bg-lg.jpg",
           },
         },
       },
@@ -205,6 +208,59 @@ export default function App() {
     })?.catch((err) => {
       console.error("Error enabling Krisp", err);
     });
+  };
+
+  const rmpParticipantIds = useParticipantIds({
+    sort: "joined_at",
+    filter: (p) => p.participantType === "remote-media-player",
+  });
+
+  const [isRemoteMediaPlayerStarted, setIsRemoteMediaPlayerStarted] =
+    useState<boolean>(false);
+
+  useDailyEvent(
+    "remote-media-player-stopped",
+    useCallback(
+      (ev) => {
+        if (!ev) return;
+        logEvent(ev);
+        setIsRemoteMediaPlayerStarted(true);
+      },
+      [logEvent, setIsRemoteMediaPlayerStarted]
+    )
+  );
+  useDailyEvent(
+    "remote-media-player-started",
+    useCallback(
+      (ev) => {
+        if (!ev) return;
+        logEvent(ev);
+        setIsRemoteMediaPlayerStarted(true);
+      },
+      [logEvent, setIsRemoteMediaPlayerStarted]
+    )
+  );
+  useDailyEvent("remote-media-player-updated", logEvent);
+
+  const toggleRemoteMedia = () => {
+    if (!callObject) {
+      return;
+    }
+    if (isRemoteMediaPlayerStarted) {
+      rmpParticipantIds.forEach((id) => {
+        callObject.stopRemoteMediaPlayer(id).catch((err) => {
+          console.error("Error stopping remote media player:", err);
+        });
+      });
+    } else {
+      callObject
+        .startRemoteMediaPlayer({
+          url: "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4",
+        })
+        .catch((err) => {
+          console.error("Error starting remote media player:", err);
+        });
+    }
   };
 
   // Join the room with the generated token
@@ -386,6 +442,9 @@ export default function App() {
         <br />
         <button onClick={() => leaveRoom()}>Leave call</button>
         <br />
+        <button onClick={() => toggleRemoteMedia()}>
+          Toggle Remote Media Player
+        </button>
         <hr />
         <br />
         2. Select your device <br />
@@ -498,6 +557,10 @@ export default function App() {
         // @ts-expect-error This works just fine but gives a typescript error
         <DailyVideo type="customTrack" key={id} automirror sessionId={id} />
       ))}
+      {rmpParticipantIds.map((id) => (
+        <DailyVideo type="rmpVideo" key={id} automirror sessionId={id} />
+      ))}
+
       <DailyAudio />
       <div id="meetingState">Meeting State: {meetingState}</div>
       {inputSettings && <div>Input settings updated</div>}
