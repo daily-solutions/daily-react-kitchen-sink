@@ -466,13 +466,6 @@ export default function App() {
         <button onClick={() => toggleRemoteMedia()}>
           Toggle Remote Media Player
         </button>
-        <button
-          onClick={() => {
-            console.log("click start vcs");
-          }}
-        >
-          Start VCS
-        </button>
         <hr />
         <br />
         2. Select your device <br />
