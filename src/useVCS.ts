@@ -7,7 +7,6 @@ import { useDaily, useDevices } from "@daily-co/daily-react";
 import { DailyVCSWebRenderer, Params } from "@daily-co/daily-vcs-web";
 // @ts-expect-error no typescript types
 import * as comp from "@daily-co/vcs-composition-daily-baseline-web";
-import { dequal } from "dequal";
 
 const getAssetUrlCb = (name: string, namespace: string, type: string) => {
   switch (type) {
