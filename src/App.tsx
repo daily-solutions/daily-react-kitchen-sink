@@ -1,4 +1,4 @@
-import React, { useCallback, useState } from "react";
+import React, { useCallback, useRef, useState } from "react";
 import Daily, {
   DailyEventObject,
   DailyEventObjectParticipant,
@@ -7,12 +7,14 @@ import Daily, {
 import {
   DailyAudio,
   DailyVideo,
+  useAudioLevelObserver,
   useCPULoad,
   useDaily,
   useDailyError,
   useDailyEvent,
   useDevices,
   useInputSettings,
+  useLocalSessionId,
   useMeetingState,
   useNetwork,
   useParticipantCounts,
@@ -27,6 +29,39 @@ import "./styles.css";
 console.info("Daily version: %s", Daily.version());
 console.info("Daily supported Browser:");
 console.dir(Daily.supportedBrowser());
+
+const MicVolumeVisualizer = () => {
+  const localSessionId = useLocalSessionId();
+
+  const volRef = useRef<HTMLDivElement>(null);
+
+  useAudioLevelObserver(
+    localSessionId,
+    useCallback((volume) => {
+      if (!volRef.current) return;
+      // this volume number will be between 0 and 1
+      // give it a minimum scale of 0.15 to not completely disappear 👻
+      volRef.current.style.transform = `scale(${Math.max(0.15, volume)})`;
+    }, [])
+  );
+
+  // Your audio track's audio volume visualized in a small circle,
+  // whose size changes depending on the volume level
+  return (
+    <div>
+      <div className="vol" ref={volRef} />
+      <style>{`
+        .vol {
+          border: 1px solid black;
+          border-radius: 100%;
+          height: 128px;
+          transition: transform 0.1s ease;
+          width: 128px;
+        }
+      `}</style>
+    </div>
+  );
+};
 
 export default function App() {
   const callObject = useDaily();
@@ -562,6 +597,7 @@ export default function App() {
       ))}
 
       <DailyAudio />
+      <MicVolumeVisualizer />
       <div id="meetingState">Meeting State: {meetingState}</div>
       {inputSettings && <div>Input settings updated</div>}
       {errorMsg && <div id="errorMsg">{errorMsg}</div>}
