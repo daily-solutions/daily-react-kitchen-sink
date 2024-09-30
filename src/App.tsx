@@ -130,7 +130,7 @@ export default function App() {
   });
 
   const cpuLoad = useCPULoad({
-    onCPULoadChange: logEvent,
+    // onCPULoadChange: logEvent,
   });
 
   const { startRecording, stopRecording, isRecording } = useRecording({
