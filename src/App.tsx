@@ -70,18 +70,16 @@ export default function App() {
 
   const [enableBlurClicked, setEnableBlurClicked] = useState(false);
   const [enableBackgroundClicked, setEnableBackgroundClicked] = useState(false);
-  const [dailyRoomUrl, setDailyRoomUrl] = useState("");
+  const [dailyRoomUrl, setDailyRoomUrl] = useState("https://hush.daily.co/sfu");
   const [dailyMeetingToken, setDailyMeetingToken] = useState("");
 
   const {
     cameraError,
     cameras,
     currentCam,
-    currentMic,
     currentSpeaker,
     microphones,
     setCamera,
-    setMicrophone,
     setSpeaker,
     speakers,
   } = useDevices();
@@ -316,7 +314,6 @@ export default function App() {
       .catch((err) => {
         console.error("Error joining room:", err);
       });
-    console.log("joined!");
   };
 
   const startCamera = () => {
@@ -364,6 +361,50 @@ export default function App() {
       });
   };
 
+  const [browserNoiseSuppressionEnabled, setBrowserNoiseSuppressionEnabled] =
+    useState<boolean>(false);
+
+  const setCustomAudioTrack = (
+    mic: string | undefined,
+    noiseSuppression: boolean
+  ) => {
+    if (!callObject) return;
+
+    navigator.mediaDevices
+      .getUserMedia({
+        audio: {
+          deviceId: mic ? { exact: mic } : undefined,
+          autoGainControl: false,
+          echoCancellation: true,
+          noiseSuppression: { exact: noiseSuppression },
+        },
+      })
+      .then((mediaStream) => {
+        const audioTracks = mediaStream.getAudioTracks();
+        const audioSource = audioTracks[0];
+
+        console.log(
+          "Setting custom audio track: noiseSuppression",
+          audioSource.getSettings().noiseSuppression
+        );
+
+        setBrowserNoiseSuppressionEnabled(
+          audioSource.getSettings().noiseSuppression ?? false
+        );
+
+        return callObject.setInputDevicesAsync({
+          audioSource,
+        });
+      })
+      .catch((err) => {
+        console.error("Error getting custom audio track: ", err);
+
+        if (err instanceof OverconstrainedError) {
+          console.error("example error: ", err.constraint);
+        }
+      });
+  };
+
   const preAuth = () => {
     if (!callObject) {
       return;
@@ -397,11 +438,12 @@ export default function App() {
     });
   };
 
+  const [currentMic, setMic] = useState("default");
+
   // change mic device
   const handleChangeMicDevice = (ev: React.ChangeEvent<HTMLSelectElement>) => {
-    setMicrophone(ev.target.value)?.catch((err) => {
-      console.error("Error setting microphone", err);
-    });
+    setCustomAudioTrack(ev.target.value, browserNoiseSuppressionEnabled);
+    setMic(ev.target.value);
   };
 
   // change speaker device
@@ -425,6 +467,13 @@ export default function App() {
       return;
     }
     callObject.setLocalVideo(true);
+  };
+
+  const toggleMic = () => {
+    if (!callObject) {
+      return;
+    }
+    callObject.setLocalAudio(!callObject.localAudio());
   };
 
   const { hidden, present } = useParticipantCounts({
@@ -497,7 +546,7 @@ export default function App() {
         <br />
         <select
           id="mic-devices"
-          value={currentMic?.device?.deviceId}
+          value={currentMic}
           onChange={handleChangeMicDevice}
         >
           {microphones.map((microphone) => (
@@ -525,6 +574,14 @@ export default function App() {
           ))}
         </select>
         <br />
+        <br />
+        <button
+          onClick={() => {
+            setCustomAudioTrack(currentMic, !browserNoiseSuppressionEnabled);
+          }}
+        >
+          Toggle Browser Noise Suppression
+        </button>
         <br />
         <button disabled={enableBlurClicked} onClick={() => enableBlur()}>
           Enable Blur
@@ -556,6 +613,7 @@ export default function App() {
           Toggle Screen Share
         </button>
         <br />
+        <button onClick={() => toggleMic()}>Toggle Mic</button>
         <button onClick={() => stopCamera()}>Camera Off</button>
         <button onClick={() => updateCameraOn()}>Camera On</button> <br />
         <button disabled={isRecording} onClick={() => startRecording()}>
