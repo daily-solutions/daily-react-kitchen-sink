@@ -1,5 +1,5 @@
 import React, { useCallback, useRef, useState } from "react";
-import { uuid } from "uuidv4";
+import { v4 as uuidv4 } from "uuid";
 
 import Daily, {
   DailyEventObject,
@@ -438,29 +438,44 @@ export default function App() {
   const meetingState = useMeetingState();
 
   const startCloudAndRawTrackRecording = async () => {
-    startRecording({ instanceId: uuid() });
+    startRecording({ instanceId: uuidv4() });
 
     // Note: make sure this is called on the SERVER SIDE in order to hide
     // the Daily API key! This is just an example.
     const headersList = {
       "Content-Type": "application/json",
       Accept: "application/json",
-      Authorization: `Bearer ${process.env.DAILY_API_KEY}`,
+      Authorization: `Bearer ${import.meta.env.VITE_DAILY_API_KEY}`,
     };
 
-    const bodyContent = JSON.stringify({
-      layout: { preset: "active-participant" },
-      force_cloud_recording: true,
-      instanceId: uuid(),
-    });
-
     const roomName = dailyRoomUrl.split("/").pop();
+
+    // This will change the default to raw-tracks. We recommend doing this when
+    // you create the room. But for this example, we're doing it here. You could
+    // also set raw-tracks in the meeting token instead.
+    const roomResponse = await fetch(
+      `https://api.daily.co/v1/rooms/${roomName}`,
+      {
+        method: "POST",
+        body: JSON.stringify({
+          properties: { enable_recording: "raw-tracks" },
+        }),
+        headers: headersList,
+      }
+    );
+
+    const roomData = await roomResponse.text();
+    console.log(roomData);
 
     const response = await fetch(
       `https://api.daily.co/v1/rooms/${roomName}/recordings/start`,
       {
         method: "POST",
-        body: bodyContent,
+        body: JSON.stringify({
+          layout: { preset: "active-participant" },
+          force_cloud_recording: true,
+          instanceId: uuidv4(),
+        }),
         headers: headersList,
       }
     );
