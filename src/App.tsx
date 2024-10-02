@@ -1,4 +1,6 @@
 import React, { useCallback, useRef, useState } from "react";
+import { v4 as uuidv4 } from "uuid";
+
 import Daily, {
   DailyEventObject,
   DailyEventObjectParticipant,
@@ -435,6 +437,55 @@ export default function App() {
 
   const meetingState = useMeetingState();
 
+  const startCloudAndRawTrackRecording = async () => {
+    startRecording({ instanceId: uuidv4() });
+
+    // Note: make sure this is called on the SERVER SIDE in order to hide
+    // the Daily API key! This is just an example.
+    const headersList = {
+      "Content-Type": "application/json",
+      Accept: "application/json",
+      Authorization: `Bearer ${import.meta.env.VITE_DAILY_API_KEY}`,
+    };
+
+    const roomName = dailyRoomUrl.split("/").pop();
+
+    // This will change the default to raw-tracks. We recommend doing this when
+    // you create the room. But for this example, we're doing it here. You could
+    // also set raw-tracks in the meeting token instead.
+    const roomResponse = await fetch(
+      `https://api.daily.co/v1/rooms/${roomName}`,
+      {
+        method: "POST",
+        body: JSON.stringify({
+          properties: { enable_recording: "raw-tracks" },
+        }),
+        headers: headersList,
+      }
+    );
+
+    const roomData = await roomResponse.text();
+    console.log(roomData);
+
+    const response = await fetch(
+      `https://api.daily.co/v1/rooms/${roomName}/recordings/start`,
+      {
+        method: "POST",
+        body: JSON.stringify({
+          layout: { preset: "active-participant" },
+          force_cloud_recording: true,
+          instanceId: uuidv4(),
+        }),
+        headers: headersList,
+      }
+    );
+
+    const data = await response.text();
+
+    console.log(data);
+    return data;
+  };
+
   return (
     <>
       <div className="App">
@@ -558,6 +609,19 @@ export default function App() {
         <br />
         <button onClick={() => stopCamera()}>Camera Off</button>
         <button onClick={() => updateCameraOn()}>Camera On</button> <br />
+        <button
+          onClick={() => {
+            startCloudAndRawTrackRecording().catch((err) => {
+              console.error(
+                "Error starting cloud and raw track recording",
+                err
+              );
+            });
+          }}
+        >
+          Start Cloud and Raw Track Recording
+        </button>
+        <br />
         <button disabled={isRecording} onClick={() => startRecording()}>
           Start Recording
         </button>
