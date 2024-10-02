@@ -1,4 +1,6 @@
 import React, { useCallback, useRef, useState } from "react";
+import { uuid } from "uuidv4";
+
 import Daily, {
   DailyEventObject,
   DailyEventObjectParticipant,
@@ -435,6 +437,40 @@ export default function App() {
 
   const meetingState = useMeetingState();
 
+  const startCloudAndRawTrackRecording = async () => {
+    startRecording({ instanceId: uuid() });
+
+    // Note: make sure this is called on the SERVER SIDE in order to hide
+    // the Daily API key! This is just an example.
+    const headersList = {
+      "Content-Type": "application/json",
+      Accept: "application/json",
+      Authorization: `Bearer ${process.env.DAILY_API_KEY}`,
+    };
+
+    const bodyContent = JSON.stringify({
+      layout: { preset: "active-participant" },
+      force_cloud_recording: true,
+      instanceId: uuid(),
+    });
+
+    const roomName = dailyRoomUrl.split("/").pop();
+
+    const response = await fetch(
+      `https://api.daily.co/v1/rooms/${roomName}/recordings/start`,
+      {
+        method: "POST",
+        body: bodyContent,
+        headers: headersList,
+      }
+    );
+
+    const data = await response.text();
+
+    console.log(data);
+    return data;
+  };
+
   return (
     <>
       <div className="App">
@@ -558,6 +594,19 @@ export default function App() {
         <br />
         <button onClick={() => stopCamera()}>Camera Off</button>
         <button onClick={() => updateCameraOn()}>Camera On</button> <br />
+        <button
+          onClick={() => {
+            startCloudAndRawTrackRecording().catch((err) => {
+              console.error(
+                "Error starting cloud and raw track recording",
+                err
+              );
+            });
+          }}
+        >
+          Start Cloud and Raw Track Recording
+        </button>
+        <br />
         <button disabled={isRecording} onClick={() => startRecording()}>
           Start Recording
         </button>

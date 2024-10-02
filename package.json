@@ -9,11 +9,12 @@
   },
   "dependencies": {
     "@daily-co/daily-js": "^0.72.0",
-    "@daily-co/daily-react": "^0.20.0",
+    "@daily-co/daily-react": "^0.21.0",
     "@vitejs/plugin-react-swc": "^3.6.0",
+    "jotai": "^2.10.0",
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
-    "recoil": "^0.7.7"
+    "uuidv4": "^6.2.13"
   },
   "scripts": {
     "dev": "vite --host",
