@@ -62,8 +62,8 @@ export const useVCS = ({ aspectRatio, orderedParticipantIds }: Props) => {
         defaultParams: params,
         participantIds: orderedParticipantIds,
         callbacks: {
-          onParamsChanged(params) {
-            console.log("VCS Params Changed: ", params);
+          onParamsChanged() {
+            // console.log("VCS Params Changed: ", params);
           },
           onStart() {
             console.log("VCS Started");

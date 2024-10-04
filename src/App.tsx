@@ -13,6 +13,7 @@ import {
   useDailyEvent,
   useDevices,
   useInputSettings,
+  useLocalSessionId,
   useMeetingState,
   useNetwork,
   useParticipantCounts,
@@ -20,6 +21,7 @@ import {
   useRecording,
   useScreenShare,
   useTranscription,
+  useVideoTrack,
 } from "@daily-co/daily-react";
 
 import "./styles.css";
@@ -51,6 +53,7 @@ export default function App() {
   const {
     cameraError,
     cameras,
+    camState,
     currentCam,
     currentMic,
     currentSpeaker,
@@ -287,6 +290,7 @@ export default function App() {
       .join({
         url: dailyRoomUrl,
         token: dailyMeetingToken,
+        startVideoOff: true,
       })
       .catch((err) => {
         console.error("Error joining room:", err);
@@ -409,6 +413,9 @@ export default function App() {
   const participantCounts = hidden + present;
 
   const meetingState = useMeetingState();
+
+  const localSessionId = useLocalSessionId();
+  const videoTrack = useVideoTrack(localSessionId);
 
   return (
     <>
@@ -566,6 +573,10 @@ export default function App() {
 
       <VCSPlayer />
 
+      <div>
+        Local Camera State: {camState} {cameraError ? cameraError.msg : null}
+      </div>
+      <div>Local Track State: {videoTrack ? videoTrack.state : null}</div>
       <div id="meetingState">Meeting State: {meetingState}</div>
       {inputSettings && <div>Input settings updated</div>}
       {errorMsg && <div id="errorMsg">{errorMsg}</div>}
