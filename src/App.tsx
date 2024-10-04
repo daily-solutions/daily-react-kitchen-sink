@@ -121,18 +121,18 @@ export default function App() {
 
         if (!callObject) return;
 
-        callObject.updateParticipant(ev.participant.session_id, {
-          setSubscribedTracks: {
-            audio: true,
-            video: true,
-            custom: true,
-            screenAudio: true,
-            screenVideo: true,
-            // @ts-expect-error rmp is in beta
-            rmpAudio: true,
-            rmpVideo: true,
-          },
-        });
+        // callObject.updateParticipant(ev.participant.session_id, {
+        //   setSubscribedTracks: {
+        //     audio: true,
+        //     video: true,
+        //     custom: true,
+        //     screenAudio: true,
+        //     screenVideo: true,
+        //     // @ts-expect-error rmp is in beta
+        //     rmpAudio: true,
+        //     rmpVideo: true,
+        //   },
+        // });
       },
       [callObject, logEvent]
     ),
@@ -334,20 +334,34 @@ export default function App() {
       });
   }, [callObject]);
 
+  const audioRef = useRef<HTMLAudioElement>(null);
   const startCustomTrack = useCallback(() => {
-    if (!callObject) {
+    if (!callObject || !audioRef.current) {
       return;
     }
-    navigator.mediaDevices
-      .getUserMedia({ video: true })
-      .then((customTrack) => {
-        return callObject.startCustomTrack({
-          track: customTrack.getVideoTracks()[0],
-          trackName: "customTrack",
-        });
+    const audioElm = audioRef.current;
+
+    audioElm.play().catch((err) => {
+      console.error("Error playing video", err);
+    });
+
+    // @ts-expect-error captureStream is not in the types
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-call, @typescript-eslint/no-unsafe-assignment
+    const stream = audioElm.captureStream();
+
+    if (!stream) {
+      console.error("Error capturing stream");
+      return;
+    }
+
+    callObject
+      .startCustomTrack({
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-call, @typescript-eslint/no-unsafe-member-access
+        track: stream.getAudioTracks()[0],
+        trackName: "customAudio",
       })
       .catch((err) => {
-        console.error("Error enabling customTrack", err);
+        console.error("Error starting custom track", err);
       });
   }, [callObject]);
 
@@ -481,8 +495,18 @@ export default function App() {
         </button>
         <br />
         <button onClick={leaveRoom}>Leave call</button>
+        <button onClick={() => startCustomTrack()}>Start Custom Track</button>
         <br />
-        <button onClick={toggleRemoteMedia}>Toggle Remote Media Player</button>
+        <button onClick={() => toggleRemoteMedia()}>
+          Toggle Remote Media Player
+        </button>
+        <br />
+        <audio id="audioElm" ref={audioRef} controls>
+          <source src="/hello.mp3" type="audio/wav" />
+          <a href="/hello.mp3" download="/hello.mp3">
+            Download audio
+          </a>
+        </audio>
         <hr />
         <br />
         2. Select your device <br />
@@ -590,7 +614,7 @@ export default function App() {
       ))}
       {participantIds.map((id) => (
         // @ts-expect-error This works just fine but gives a typescript error
-        <DailyVideo type="customTrack" key={id} automirror sessionId={id} />
+        <DailyVideo type="customVideo" key={id} automirror sessionId={id} />
       ))}
       {rmpParticipantIds.map((id) => (
         <DailyVideo type="rmpVideo" key={id} automirror sessionId={id} />
