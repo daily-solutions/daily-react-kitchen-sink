@@ -487,15 +487,15 @@ export default function App() {
           Preauth
         </button>
         <br />
-        <button onClick={startCamera}>Start Camera</button> <br />
-        <button onClick={startCustomTrack}>Start Custom Track</button>
+        <button onClick={startCamera}>Start Camera</button>
         <br />
         <button disabled={!dailyRoomUrl.length} onClick={joinRoom}>
           Join call
         </button>
         <br />
+        <button onClick={startCustomTrack}>Start Custom Track</button>
+        <br />
         <button onClick={leaveRoom}>Leave call</button>
-        <button onClick={() => startCustomTrack()}>Start Custom Track</button>
         <br />
         <button onClick={() => toggleRemoteMedia()}>
           Toggle Remote Media Player
