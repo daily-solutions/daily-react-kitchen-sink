@@ -22,7 +22,7 @@ root.render(
       <Prebuilt />
     ) : (
       <DailyProvider
-        subscribeToTracksAutomatically={false}
+        subscribeToTracksAutomatically={true}
         dailyConfig={{ useDevicePreferenceCookies: true }}
       >
         <App />
