@@ -186,7 +186,7 @@ export default function App() {
     logEvent(nonFatalError);
   }
 
-  const enableBlur = () => {
+  const enableBlur = useCallback(() => {
     if (!callObject || enableBlurClicked) {
       return;
     }
@@ -204,9 +204,9 @@ export default function App() {
     })?.catch((err) => {
       console.error("Error enabling blur", err);
     });
-  };
+  }, [callObject, updateInputSettings, enableBlurClicked]);
 
-  const enableBackground = () => {
+  const enableBackground = useCallback(() => {
     if (!callObject || enableBackgroundClicked) {
       return;
     }
@@ -227,9 +227,9 @@ export default function App() {
     })?.catch((err) => {
       console.error("Error enabling background image", err);
     });
-  };
+  }, [callObject, updateInputSettings, enableBackgroundClicked]);
 
-  const toggleKrisp = () => {
+  const toggleKrisp = useCallback(() => {
     if (!callObject) {
       return;
     }
@@ -243,7 +243,7 @@ export default function App() {
     })?.catch((err) => {
       console.error("Error enabling Krisp", err);
     });
-  };
+  }, [callObject, noiseCancellationEnabled, updateInputSettings]);
 
   const rmpParticipantIds = useParticipantIds({
     sort: "joined_at",
@@ -277,7 +277,7 @@ export default function App() {
   );
   useDailyEvent("remote-media-player-updated", logEvent);
 
-  const toggleRemoteMedia = () => {
+  const toggleRemoteMedia = useCallback(() => {
     if (!callObject) {
       return;
     }
@@ -296,10 +296,10 @@ export default function App() {
           console.error("Error starting remote media player:", err);
         });
     }
-  };
+  }, [callObject, isRemoteMediaPlayerStarted, rmpParticipantIds]);
 
   // Join the room with the generated token
-  const joinRoom = () => {
+  const joinRoom = useCallback(() => {
     if (!callObject) {
       return;
     }
@@ -317,9 +317,9 @@ export default function App() {
         console.error("Error joining room:", err);
       });
     console.log("joined!");
-  };
+  }, [callObject, dailyRoomUrl, dailyMeetingToken]);
 
-  const startCamera = () => {
+  const startCamera = useCallback(() => {
     if (!callObject) {
       return;
     }
@@ -332,9 +332,9 @@ export default function App() {
       .catch((err) => {
         console.error("Error starting camera", err);
       });
-  };
+  }, [callObject]);
 
-  const startCustomTrack = () => {
+  const startCustomTrack = useCallback(() => {
     if (!callObject) {
       return;
     }
@@ -349,9 +349,9 @@ export default function App() {
       .catch((err) => {
         console.error("Error enabling customTrack", err);
       });
-  };
+  }, [callObject]);
 
-  const load = () => {
+  const load = useCallback(() => {
     if (!callObject) {
       return;
     }
@@ -362,9 +362,9 @@ export default function App() {
       .catch((err) => {
         console.error("Error entering load step", err);
       });
-  };
+  }, [callObject, dailyRoomUrl]);
 
-  const preAuth = () => {
+  const preAuth = useCallback(() => {
     if (!callObject) {
       return;
     }
@@ -375,57 +375,62 @@ export default function App() {
       .catch((err) => {
         console.error("Error entering preAuth", err);
       });
-  };
+  }, [callObject, dailyRoomUrl]);
 
   // Remove video elements and leave the room
-  const leaveRoom = () => {
+  const leaveRoom = useCallback(() => {
     if (!callObject) {
       return;
     }
     callObject.leave().catch((err) => {
       console.error("Error leaving room:", err);
     });
-  };
+  }, [callObject]);
 
   // change video device
-  const handleChangeVideoDevice = (
-    ev: React.ChangeEvent<HTMLSelectElement>
-  ) => {
-    console.log("--- changing video device");
-    setCamera(ev.target.value)?.catch((err) => {
-      console.error("Error setting camera", err);
-    });
-  };
+  const handleChangeVideoDevice = useCallback(
+    (ev: React.ChangeEvent<HTMLSelectElement>) => {
+      console.log("--- changing video device");
+      setCamera(ev.target.value)?.catch((err) => {
+        console.error("Error setting camera", err);
+      });
+    },
+    [setCamera]
+  );
 
   // change mic device
-  const handleChangeMicDevice = (ev: React.ChangeEvent<HTMLSelectElement>) => {
-    setMicrophone(ev.target.value)?.catch((err) => {
-      console.error("Error setting microphone", err);
-    });
-  };
+  const handleChangeMicDevice = useCallback(
+    (ev: React.ChangeEvent<HTMLSelectElement>) => {
+      setMicrophone(ev.target.value)?.catch((err) => {
+        console.error("Error setting microphone", err);
+      });
+    },
+    [setMicrophone]
+  );
 
   // change speaker device
-  const handleChangeSpeakerDevice = (
-    ev: React.ChangeEvent<HTMLSelectElement>
-  ) => {
-    setSpeaker(ev?.target?.value)?.catch((err) => {
-      console.error("Error setting speaker", err);
-    });
-  };
+  const handleChangeSpeakerDevice = useCallback(
+    (ev: React.ChangeEvent<HTMLSelectElement>) => {
+      setSpeaker(ev?.target?.value)?.catch((err) => {
+        console.error("Error setting speaker", err);
+      });
+    },
+    [setSpeaker]
+  );
 
-  const stopCamera = () => {
+  const stopCamera = useCallback(() => {
     if (!callObject) {
       return;
     }
     callObject.setLocalVideo(false);
-  };
+  }, [callObject]);
 
-  const updateCameraOn = () => {
+  const updateCameraOn = useCallback(() => {
     if (!callObject) {
       return;
     }
     callObject.setLocalVideo(true);
-  };
+  }, [callObject]);
 
   const { hidden, present } = useParticipantCounts({
     onParticipantCountsUpdated: logEvent,
@@ -463,23 +468,21 @@ export default function App() {
           }}
         />
         <br />
-        <button onClick={() => load()}>Load</button> <br />
-        <button disabled={!dailyRoomUrl.length} onClick={() => preAuth()}>
+        <button onClick={load}>Load</button> <br />
+        <button disabled={!dailyRoomUrl.length} onClick={preAuth}>
           Preauth
         </button>
         <br />
-        <button onClick={() => startCamera()}>Start Camera</button> <br />
-        <button onClick={() => startCustomTrack()}>Start Custom Track</button>
+        <button onClick={startCamera}>Start Camera</button> <br />
+        <button onClick={startCustomTrack}>Start Custom Track</button>
         <br />
-        <button disabled={!dailyRoomUrl.length} onClick={() => joinRoom()}>
+        <button disabled={!dailyRoomUrl.length} onClick={joinRoom}>
           Join call
         </button>
         <br />
-        <button onClick={() => leaveRoom()}>Leave call</button>
+        <button onClick={leaveRoom}>Leave call</button>
         <br />
-        <button onClick={() => toggleRemoteMedia()}>
-          Toggle Remote Media Player
-        </button>
+        <button onClick={toggleRemoteMedia}>Toggle Remote Media Player</button>
         <hr />
         <br />
         2. Select your device <br />
@@ -526,13 +529,10 @@ export default function App() {
         </select>
         <br />
         <br />
-        <button disabled={enableBlurClicked} onClick={() => enableBlur()}>
+        <button disabled={enableBlurClicked} onClick={enableBlur}>
           Enable Blur
         </button>
-        <button
-          disabled={enableBackgroundClicked}
-          onClick={() => enableBackground()}
-        >
+        <button disabled={enableBackgroundClicked} onClick={enableBackground}>
           Enable Background
         </button>
         <br />
@@ -556,8 +556,8 @@ export default function App() {
           Toggle Screen Share
         </button>
         <br />
-        <button onClick={() => stopCamera()}>Camera Off</button>
-        <button onClick={() => updateCameraOn()}>Camera On</button> <br />
+        <button onClick={stopCamera}>Camera Off</button>
+        <button onClick={updateCameraOn}>Camera On</button> <br />
         <button disabled={isRecording} onClick={() => startRecording()}>
           Start Recording
         </button>
