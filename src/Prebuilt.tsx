@@ -11,6 +11,7 @@ import {
 import {
   DailyEventObject,
   DailyEventObjectAppMessage,
+  DailyEventObjectParticipantLeft,
 } from "@daily-co/daily-js";
 
 const App = () => {
@@ -30,9 +31,25 @@ const App = () => {
     }
   }, []);
 
+  const ownerParticipantIds = useParticipantIds({
+    filter: (p) => p.owner,
+  });
+
   useParticipantIds({
     onParticipantJoined: logEvent,
-    onParticipantLeft: logEvent,
+    onParticipantLeft: useCallback(
+      (ev: DailyEventObjectParticipantLeft) => {
+        const { participant } = ev;
+        if (!participant) return;
+
+        if (ownerParticipantIds.length === 0) {
+          callObject?.leave().catch((err) => {
+            console.error("Error leaving call", err);
+          });
+        }
+      },
+      [callObject, ownerParticipantIds.length]
+    ),
     onParticipantUpdated: logEvent,
   });
 
