@@ -147,6 +147,7 @@ export default function App() {
       onTranscriptionError: logEvent,
       onTranscriptionStarted: logEvent,
       onTranscriptionStopped: logEvent,
+      onTranscriptionMessage: logEvent,
     });
 
   const network = useNetwork({
