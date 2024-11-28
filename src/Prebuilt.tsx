@@ -15,7 +15,6 @@ import {
   DailyEventObjectAppMessage,
   DailyEventObjectInputSettingsUpdated,
 } from "@daily-co/daily-js";
-import { error } from "console";
 
 const App = () => {
   const callObject = useDaily();
