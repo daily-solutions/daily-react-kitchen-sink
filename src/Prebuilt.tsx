@@ -139,7 +139,7 @@ export const Prebuilt = () => {
     // @ts-expect-error will be fixed in the next release
     parentElRef: wrapperRef,
     options: {
-      url: "https://hush.daily.co/sfu",
+      url: "https://hush.daily.co/demo",
       iframeStyle: {
         width: "100%",
         height: "80vh",
