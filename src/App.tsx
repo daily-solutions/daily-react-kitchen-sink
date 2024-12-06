@@ -158,7 +158,14 @@ export default function App() {
     onCPULoadChange: logEvent,
   });
 
-  const { startRecording, stopRecording, isRecording } = useRecording({
+  const {
+    startRecording,
+    stopRecording,
+    isRecording,
+    isLocalParticipantRecorded,
+    recordingId,
+    recordingStartedDate,
+  } = useRecording({
     onRecordingData: logEvent,
     onRecordingError: logEvent,
     onRecordingStarted: logEvent,
@@ -598,6 +605,17 @@ export default function App() {
 
       <DailyAudio />
       <MicVolumeVisualizer />
+      <div>
+        Recording info:
+        <pre>
+          {JSON.stringify({
+            isRecording,
+            isLocalParticipantRecorded,
+            recordingId,
+            recordingStartedDate,
+          })}
+        </pre>
+      </div>
       <div id="meetingState">Meeting State: {meetingState}</div>
       {inputSettings && <div>Input settings updated</div>}
       {errorMsg && <div id="errorMsg">{errorMsg}</div>}
