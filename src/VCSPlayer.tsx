@@ -38,7 +38,7 @@ export const VCSPlayer = () => {
             getAssetUrlCb: (name: string, namespace: string, type: string) => {
               switch (type) {
                 case "font":
-                  break;
+                  return `/vcs/res/fonts/${name}`; // Not used
                 case "image":
                   return namespace === "composition"
                     ? `/vcs/composition-assets/${name}`

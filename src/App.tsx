@@ -598,6 +598,7 @@ const VCSPlayer = () => {
     aspectRatio: 20,
   });
 
+  // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-member-access
   const state = vcsCompRef.current?.state ?? "unknown";
 
   return (
@@ -606,6 +607,7 @@ const VCSPlayer = () => {
       <button
         onClick={() => {
           if (vcsCompRef.current !== null) {
+            // eslint-disable-next-line @typescript-eslint/no-unsafe-call, @typescript-eslint/no-unsafe-member-access
             vcsCompRef.current.start().catch((err) => {
               console.error(err);
             });
@@ -618,6 +620,7 @@ const VCSPlayer = () => {
       <button
         onClick={() => {
           if (vcsCompRef.current !== null) {
+            // eslint-disable-next-line @typescript-eslint/no-unsafe-call, @typescript-eslint/no-unsafe-member-access
             vcsCompRef.current.stop();
             console.log("vcsCompRef.current", vcsCompRef.current);
           }

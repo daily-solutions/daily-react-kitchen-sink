@@ -11,7 +11,7 @@ import * as comp from "@daily-co/vcs-composition-daily-baseline-web";
 const getAssetUrlCb = (name: string, namespace: string, type: string) => {
   switch (type) {
     case "font":
-      break;
+      return `/vcs/res/fonts/Roboto-Regular.ttf`;
     case "image":
       return namespace === "composition"
         ? `/vcs/composition-assets/${name}`
