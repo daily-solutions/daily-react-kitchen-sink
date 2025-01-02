@@ -7,7 +7,6 @@ import {
   useDaily,
   useParticipantCounts,
   useParticipantIds,
-  useRoom,
 } from "@daily-co/daily-react";
 import {
   DailyEventObject,
@@ -16,8 +15,6 @@ import {
 
 const App = () => {
   const callObject = useDaily();
-  const room = useRoom()
-  
 
   // @ts-expect-error debugging
   window.callObject = callObject;
@@ -55,7 +52,7 @@ const App = () => {
           console.log("Chat message:", message.data.message);
           break;
         default:
-          console.log("Unknown event:", message);
+          console.log("Unknown event:", message.data.event);
       }
     }, []),
   });
@@ -75,7 +72,7 @@ const App = () => {
       >
         Send message
       </button>
-      <span>{room?.name} {participantCount.present} participants</span>
+      <span>{participantCount.present} participants</span>
     </>
   );
 };
@@ -86,7 +83,7 @@ export const Prebuilt = () => {
     // @ts-expect-error will be fixed in the next release
     parentElRef: wrapperRef,
     options: {
-      url: "https://pc-5b722fad4e9b47df8faa50cf3626267d.daily.co/test",
+      url: "https://hush.daily.co/demo",
       iframeStyle: {
         width: "100%",
         height: "80vh",
