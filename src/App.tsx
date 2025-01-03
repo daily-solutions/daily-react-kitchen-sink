@@ -1,12 +1,14 @@
 import React, { useCallback, useRef, useState } from "react";
 import Daily, {
   DailyEventObject,
+  DailyEventObjectAppMessage,
   DailyEventObjectParticipant,
 } from "@daily-co/daily-js";
 
 import {
   DailyAudio,
   DailyVideo,
+  useAppMessage,
   useAudioLevelObserver,
   useCPULoad,
   useDaily,
@@ -439,6 +441,24 @@ export default function App() {
   const participantCounts = hidden + present;
 
   const meetingState = useMeetingState();
+
+  interface TranslationAppMessage {
+    event: string;
+    text: string;
+  }
+
+  useAppMessage({
+    onAppMessage: useCallback((message: DailyEventObjectAppMessage<TranslationAppMessage>) => {
+      console.log(message);
+      switch (message.data.event) {
+        case "translation":
+          console.log("Translation:", message.data.text);
+          break;
+        default:
+          console.log("Unknown event:", message);
+      }
+    }, []),
+  });
 
   return (
     <>
