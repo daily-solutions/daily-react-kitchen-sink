@@ -83,6 +83,9 @@ export const Prebuilt = () => {
     // @ts-expect-error will be fixed in the next release
     parentElRef: wrapperRef,
     options: {
+      dailyConfig: {
+        useDevicePreferenceCookies: true,
+      },
       url: "https://hush.daily.co/demo",
       iframeStyle: {
         width: "100%",
