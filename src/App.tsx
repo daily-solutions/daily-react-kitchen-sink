@@ -1,12 +1,15 @@
 import React, { useCallback, useRef, useState } from "react";
 import Daily, {
   DailyEventObject,
+  DailyEventObjectAppMessage,
   DailyEventObjectParticipant,
+  DailyEventObjectRecordingStarted,
 } from "@daily-co/daily-js";
 
 import {
   DailyAudio,
   DailyVideo,
+  useAppMessage,
   useAudioLevelObserver,
   useCPULoad,
   useDaily,
@@ -158,6 +161,19 @@ export default function App() {
     onCPULoadChange: logEvent,
   });
 
+  interface CustomAppMessage {
+    recordingId: string;
+  }
+
+  const sendAppMessage = useAppMessage<CustomAppMessage>({
+    onAppMessage: useCallback(
+      (message: DailyEventObjectAppMessage<CustomAppMessage>) => {
+        console.log(message);
+      },
+      []
+    ),
+  });
+
   const {
     startRecording,
     stopRecording,
@@ -168,7 +184,18 @@ export default function App() {
   } = useRecording({
     onRecordingData: logEvent,
     onRecordingError: logEvent,
-    onRecordingStarted: logEvent,
+    onRecordingStarted: useCallback(
+      (ev: DailyEventObjectRecordingStarted) => {
+        if (!ev) return;
+
+        if (ev.recordingId) {
+          sendAppMessage({
+            recordingId: ev.recordingId,
+          });
+        }
+      },
+      [sendAppMessage]
+    ),
     onRecordingStopped: logEvent,
   });
 
