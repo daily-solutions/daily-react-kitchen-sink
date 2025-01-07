@@ -4,6 +4,7 @@ import Daily, {
   DailyEventObjectAppMessage,
   DailyEventObjectParticipant,
   DailyEventObjectRecordingStarted,
+  DailyEventObjectRecordingStopped,
 } from "@daily-co/daily-js";
 
 import {
@@ -28,6 +29,7 @@ import {
 } from "@daily-co/daily-react";
 
 import "./styles.css";
+import { log } from "console";
 
 console.info("Daily version: %s", Daily.version());
 console.info("Daily supported Browser:");
@@ -162,7 +164,8 @@ export default function App() {
   });
 
   interface CustomAppMessage {
-    recordingId: string;
+    recordingId: string | null;
+    isRecording: boolean;
   }
 
   const sendAppMessage = useAppMessage<CustomAppMessage>({
@@ -191,12 +194,22 @@ export default function App() {
         if (ev.recordingId) {
           sendAppMessage({
             recordingId: ev.recordingId,
+            isRecording: true,
           });
         }
       },
       [sendAppMessage]
     ),
-    onRecordingStopped: logEvent,
+    onRecordingStopped: useCallback(
+      (ev: DailyEventObjectRecordingStopped) => {
+        logEvent(ev);
+        sendAppMessage({
+          recordingId: null,
+          isRecording: false,
+        });
+      },
+      [sendAppMessage, logEvent]
+    ),
   });
 
   useDailyEvent("load-attempt-failed", logEvent);
