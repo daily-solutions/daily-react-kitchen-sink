@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useRef, useState } from "react";
+import React, { useCallback, useRef, useState } from "react";
 import Daily, {
   DailyEventObject,
   DailyEventObjectAppMessage,
@@ -140,7 +140,7 @@ export default function App() {
     ),
     onParticipantLeft: logEvent,
     onParticipantUpdated: logEvent,
-    onActiveSpeakerChange: logEvent,
+    // onActiveSpeakerChange: logEvent,
   });
 
   const { startTranscription, stopTranscription, isTranscribing } =
@@ -527,8 +527,8 @@ export default function App() {
         // THE API KEYS WILL BE VISIBLE IN THE BROWSER.
         // THIS IS JUST FOR DEMONSTRATION PURPOSES. CREATE A SERVER TO HANDLE THIS.
         api_keys: {
-          openai: `${import.meta.env.REACT_APP_VITE_OPENAI_API_KEY}`,
-          azure_tts: `${import.meta.env.REACT_APP_VITE_AZURE_SPEECH_API_KEY}`,
+          openai: `${import.meta.env.VITE_OPENAI_API_KEY}`,
+          azure_tts: `${import.meta.env.VITE_AZURE_SPEECH_API_KEY}`,
         },
       }),
     })
