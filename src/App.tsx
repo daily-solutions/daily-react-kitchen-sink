@@ -446,6 +446,7 @@ export default function App() {
     event: string;
     text: string;
     role: string;
+    language: string;
   }
 
   const startBot = () => {
@@ -554,7 +555,7 @@ export default function App() {
         console.log(message);
         switch (message.data.event) {
           case "translation":
-            console.log(message.data.role, message.data.text);
+            console.log(message.data.language, message.data.text);
             break;
           default:
             console.log("Unknown event:", message);
