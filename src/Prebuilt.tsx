@@ -57,6 +57,22 @@ const App = () => {
     }, []),
   });
 
+  const { present } = useParticipantCounts();
+
+  // Set a 10 second timer in a useEffect to leave the call
+  // if the user is the only participant
+  useEffect(() => {
+    if (present === 1 && callObject) {
+      const timer = setTimeout(() => {
+        console.log("Leaving call");
+        callObject.leave().catch((err) => {
+          console.error("Error leaving call", err);
+        });
+      }, 10000);
+      return () => clearTimeout(timer);
+    }
+  }, [callObject, present]);
+
   return (
     <>
       <button
