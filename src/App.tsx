@@ -124,9 +124,11 @@ export default function App() {
     ),
   })[0];
 
+  console.log("The bot participant id:", botParticipantId);
+
   const audioTrack = useAudioTrack(botParticipantId);
 
-  console.log(audioTrack);
+  console.log("The bot audio track:", audioTrack);
 
   const participantIds = useParticipantIds({
     onParticipantJoined: useCallback(
