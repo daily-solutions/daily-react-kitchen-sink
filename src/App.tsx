@@ -7,7 +7,9 @@ import Daily, {
 import {
   DailyAudio,
   DailyVideo,
+  ExtendedDailyParticipant,
   useAudioLevelObserver,
+  useAudioTrack,
   useCPULoad,
   useDaily,
   useDailyError,
@@ -113,6 +115,18 @@ export default function App() {
 
   const { startScreenShare, stopScreenShare, screens, isSharingScreen } =
     useScreenShare();
+
+  // Select a participant example
+  const botParticipantId = useParticipantIds({
+    filter: useCallback(
+      (p: ExtendedDailyParticipant) => p.user_name === "bot name",
+      []
+    ),
+  })[0];
+
+  const audioTrack = useAudioTrack(botParticipantId);
+
+  console.log(audioTrack);
 
   const participantIds = useParticipantIds({
     onParticipantJoined: useCallback(
