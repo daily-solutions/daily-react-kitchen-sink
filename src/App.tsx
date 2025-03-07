@@ -22,6 +22,8 @@ import {
   useRecording,
   useScreenShare,
   useTranscription,
+  useAudioTrack,
+  useVideoTrack,
 } from "@daily-co/daily-react";
 
 import "./styles.css";
@@ -70,8 +72,11 @@ export default function App() {
 
   const [enableBlurClicked, setEnableBlurClicked] = useState(false);
   const [enableBackgroundClicked, setEnableBackgroundClicked] = useState(false);
-  const [dailyRoomUrl, setDailyRoomUrl] = useState("");
+  const [dailyRoomUrl, setDailyRoomUrl] = useState(
+    "https://hush.daily.co/demo"
+  );
   const [dailyMeetingToken, setDailyMeetingToken] = useState("");
+  const [audioUnavailable, setAudioUnavailable] = useState<boolean>(false);
 
   const {
     cameraError,
@@ -312,12 +317,16 @@ export default function App() {
       .join({
         url: dailyRoomUrl,
         token: dailyMeetingToken,
+        startAudioOff: audioUnavailable,
+        dailyConfig: {
+          alwaysIncludeMicInPermissionPrompt: false,
+        },
       })
       .catch((err) => {
         console.error("Error joining room:", err);
       });
     console.log("joined!");
-  }, [callObject, dailyRoomUrl, dailyMeetingToken]);
+  }, [callObject, dailyRoomUrl, dailyMeetingToken, audioUnavailable]);
 
   const startCamera = useCallback(() => {
     if (!callObject) {
@@ -325,7 +334,13 @@ export default function App() {
     }
 
     callObject
-      .startCamera()
+      .startCamera({
+        startAudioOff: true,
+        dailyConfig: {
+          // enableIndependentDevicePermissionPrompts: true,
+          alwaysIncludeMicInPermissionPrompt: false,
+        },
+      })
       .then((res) => {
         console.log("startCamera: ", res);
       })
@@ -440,9 +455,22 @@ export default function App() {
 
   const meetingState = useMeetingState();
 
+  const localSessionId = useLocalSessionId();
+  const audioTrack = useAudioTrack(localSessionId);
+  const videoTrack = useVideoTrack(localSessionId);
+
   return (
     <>
       <div className="App">
+        <p>
+          Audio track state: {audioTrack.state} Muted:{" "}
+          {String(audioTrack.persistentTrack?.muted)} Audio Unavailable:{" "}
+          {String(audioUnavailable)}
+        </p>
+        <p>
+          Video track state: {videoTrack.state} Muted:{" "}
+          {String(videoTrack.persistentTrack?.muted)}
+        </p>
         <br />
         1. Join the call
         <br />
@@ -473,6 +501,29 @@ export default function App() {
           Preauth
         </button>
         <br />
+        <button
+          onClick={() => {
+            navigator.mediaDevices
+              .getUserMedia({ audio: true })
+              .then((stream) => {
+                const audioTracks = stream?.getAudioTracks();
+
+                // check needs to be in a timeout b/c for some reason muted prop is false initially when it comes back
+                // It flips to true almost immediately if the user is using their mic for a phone call though
+                setTimeout(() => {
+                  if (audioTracks[0]?.muted) {
+                    // this.isAudioUnavailable = true;
+                    setAudioUnavailable(true);
+                  }
+                }, 100);
+              })
+              .catch((err) => {
+                console.error(err);
+              });
+          }}
+        >
+          gUM check
+        </button>
         <button onClick={startCamera}>Start Camera</button> <br />
         <button onClick={startCustomTrack}>Start Custom Track</button>
         <br />
