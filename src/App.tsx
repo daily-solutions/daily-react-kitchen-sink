@@ -319,7 +319,7 @@ export default function App() {
         token: dailyMeetingToken,
         startAudioOff: audioUnavailable,
         dailyConfig: {
-          alwaysIncludeMicInPermissionPrompt: false,
+          alwaysIncludeMicInPermissionPrompt: !audioUnavailable,
         },
       })
       .catch((err) => {
@@ -335,10 +335,9 @@ export default function App() {
 
     callObject
       .startCamera({
-        startAudioOff: true,
+        startAudioOff: audioUnavailable,
         dailyConfig: {
-          // enableIndependentDevicePermissionPrompts: true,
-          alwaysIncludeMicInPermissionPrompt: false,
+          alwaysIncludeMicInPermissionPrompt: !audioUnavailable,
         },
       })
       .then((res) => {
@@ -347,7 +346,7 @@ export default function App() {
       .catch((err) => {
         console.error("Error starting camera", err);
       });
-  }, [callObject]);
+  }, [audioUnavailable, callObject]);
 
   const startCustomTrack = useCallback(() => {
     if (!callObject) {
