@@ -382,9 +382,17 @@ export default function App() {
     if (!callObject) {
       return;
     }
-    callObject.leave().catch((err) => {
-      console.error("Error leaving room:", err);
-    });
+    callObject
+      .leave()
+      ?.then(() => {
+        return callObject.destroy();
+      })
+      .then((res) => {
+        console.log(res);
+      })
+      .catch((err) => {
+        console.error(err);
+      });
   }, [callObject]);
 
   // change video device
