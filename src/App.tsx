@@ -1,16 +1,10 @@
-<<<<<<< HEAD
-import React, { useCallback, useRef, useState } from "react";
-=======
-import React, { useCallback, useEffect, useState } from "react";
->>>>>>> 6dcbd6c (Copy useVCS hook and fix errors)
+import React, { useCallback, useRef, useEffect, useState } from "react";
 import Daily, {
   DailyEventObject,
   DailyEventObjectParticipant,
 } from "@daily-co/daily-js";
 
 import {
-  DailyAudio,
-  DailyVideo,
   useAudioLevelObserver,
   useCPULoad,
   useDaily,
@@ -127,7 +121,7 @@ export default function App() {
   const noiseCancellationEnabled =
     inputSettings?.audio?.processor?.type === "noise-cancellation";
 
-  const { startScreenShare, stopScreenShare, screens, isSharingScreen } =
+  const { startScreenShare, stopScreenShare, isSharingScreen } =
     useScreenShare();
 
   const participantIds = useParticipantIds({
@@ -183,7 +177,18 @@ export default function App() {
 
   useDailyEvent("load-attempt-failed", logEvent);
   useDailyEvent("joining-meeting", logEvent);
-  useDailyEvent("joined-meeting", logEvent);
+  useDailyEvent(
+    "joined-meeting",
+    useCallback(
+      (ev) => {
+        logEvent(ev);
+        if (!callObject) return;
+        callObject.setLocalVideo(true);
+        callObject.setLocalVideo(false);
+      },
+      [callObject, logEvent]
+    )
+  );
   useDailyEvent("track-started", logEvent);
   useDailyEvent("track-stopped", logEvent);
   useDailyEvent("started-camera", logEvent);

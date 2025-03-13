@@ -39,7 +39,7 @@ export const useVCS = ({ aspectRatio, orderedParticipantIds }: Props) => {
     () => ({
       preset: "custom",
       "videoSettings.showParticipantLabels": true,
-      "videoSettings.omitPausedVideo": true,
+      "videoSettings.omitPausedVideo": false,
     }),
     []
   );
