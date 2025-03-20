@@ -291,6 +291,26 @@ export default function App() {
       callObject
         .startRemoteMediaPlayer({
           url: "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4",
+          settings: {
+            state: "play",
+            simulcastEncodings: [
+              {
+                maxBitrate: 90000,
+                scaleResolutionDownBy: 4, // 180p
+                maxFramerate: 15,
+              },
+              {
+                maxBitrate: 200000,
+                scaleResolutionDownBy: 2, // 360p
+                maxFramerate: 15,
+              },
+              {
+                maxBitrate: 2000000,
+                scaleResolutionDownBy: 1, // 720p
+                maxFramerate: 30,
+              },
+            ],
+          },
         })
         .catch((err) => {
           console.error("Error starting remote media player:", err);
