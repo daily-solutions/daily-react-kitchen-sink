@@ -19,6 +19,7 @@ import {
   useNetwork,
   useParticipantCounts,
   useParticipantIds,
+  useReceiveSettings,
   useRecording,
   useScreenShare,
   useTranscription,
@@ -291,32 +292,49 @@ export default function App() {
       callObject
         .startRemoteMediaPlayer({
           url: "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4",
-          settings: {
-            state: "play",
-            simulcastEncodings: [
-              {
-                maxBitrate: 90000,
-                scaleResolutionDownBy: 4, // 180p
-                maxFramerate: 15,
-              },
-              {
-                maxBitrate: 200000,
-                scaleResolutionDownBy: 2, // 360p
-                maxFramerate: 15,
-              },
-              {
-                maxBitrate: 2000000,
-                scaleResolutionDownBy: 1, // 720p
-                maxFramerate: 30,
-              },
-            ],
-          },
+          simulcastEncodings: [
+            {
+              maxBitrate: 90000,
+              scaleResolutionDownBy: 4, // 180p
+              maxFramerate: 15,
+            },
+            {
+              maxBitrate: 200000,
+              scaleResolutionDownBy: 2, // 360p
+              maxFramerate: 15,
+            },
+            {
+              maxBitrate: 2000000,
+              scaleResolutionDownBy: 1, // 720p
+              maxFramerate: 30,
+            },
+          ],
         })
         .catch((err) => {
           console.error("Error starting remote media player:", err);
         });
     }
   }, [callObject, isRemoteMediaPlayerStarted, rmpParticipantIds]);
+
+  const { updateReceiveSettings } = useReceiveSettings();
+  const toggleSimulcastLayer = useCallback(
+    (layer: number) => () => {
+      if (!callObject) {
+        return;
+      }
+      updateReceiveSettings({
+        "*": {
+          video: {
+            layer,
+          },
+          rmpVideo: {
+            layer,
+          },
+        },
+      });
+    },
+    [callObject, updateReceiveSettings]
+  );
 
   // Join the room with the generated token
   const joinRoom = useCallback(() => {
@@ -511,6 +529,15 @@ export default function App() {
         <button onClick={leaveRoom}>Leave call</button>
         <br />
         <button onClick={toggleRemoteMedia}>Toggle Remote Media Player</button>
+        <button onClick={toggleSimulcastLayer(0)}>
+          Toggle Simulcast Layer 0
+        </button>
+        <button onClick={toggleSimulcastLayer(1)}>
+          Toggle Simulcast Layer 1
+        </button>
+        <button onClick={toggleSimulcastLayer(2)}>
+          Toggle Simulcast Layer 2
+        </button>
         <hr />
         <br />
         2. Select your device <br />
