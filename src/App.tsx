@@ -177,7 +177,18 @@ export default function App() {
 
   useDailyEvent("load-attempt-failed", logEvent);
   useDailyEvent("joining-meeting", logEvent);
-  useDailyEvent("joined-meeting", logEvent);
+  useDailyEvent(
+    "joined-meeting",
+    useCallback(
+      (ev) => {
+        logEvent(ev);
+        if (!callObject) return;
+        callObject.setLocalVideo(true);
+        callObject.setLocalVideo(false);
+      },
+      [callObject, logEvent]
+    )
+  );
   useDailyEvent("track-started", logEvent);
   useDailyEvent("track-stopped", logEvent);
   useDailyEvent("started-camera", logEvent);
