@@ -21,10 +21,7 @@ root.render(
     {isPrebuilt ? (
       <Prebuilt />
     ) : (
-      <DailyProvider
-        subscribeToTracksAutomatically={false}
-        dailyConfig={{ useDevicePreferenceCookies: true }}
-      >
+      <DailyProvider subscribeToTracksAutomatically={false}>
         <App />
       </DailyProvider>
     )}
