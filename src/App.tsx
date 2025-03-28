@@ -1,12 +1,10 @@
-import React, { useCallback, useRef, useState } from "react";
+import React, { useCallback, useRef, useEffect, useState } from "react";
 import Daily, {
   DailyEventObject,
   DailyEventObjectParticipant,
 } from "@daily-co/daily-js";
 
 import {
-  DailyAudio,
-  DailyVideo,
   useAudioLevelObserver,
   useCPULoad,
   useDaily,
@@ -22,9 +20,11 @@ import {
   useRecording,
   useScreenShare,
   useTranscription,
+  useVideoTrack,
 } from "@daily-co/daily-react";
 
 import "./styles.css";
+import { useVCS } from "./useVCS";
 
 console.info("Daily version: %s", Daily.version());
 console.info("Daily supported Browser:");
@@ -70,12 +70,22 @@ export default function App() {
 
   const [enableBlurClicked, setEnableBlurClicked] = useState(false);
   const [enableBackgroundClicked, setEnableBackgroundClicked] = useState(false);
-  const [dailyRoomUrl, setDailyRoomUrl] = useState("");
+  const [dailyRoomUrl, setDailyRoomUrl] = useState("https://hush.daily.co/sfu");
   const [dailyMeetingToken, setDailyMeetingToken] = useState("");
+  const [dailyParticipantName, setDailyParticipantName] =
+    useState("VCS Participant");
+
+  useEffect(() => {
+    if (!callObject) return;
+    callObject.setUserName(dailyParticipantName).catch((err) => {
+      console.error("Error setting user name", err);
+    });
+  }, [dailyParticipantName, callObject]);
 
   const {
     cameraError,
     cameras,
+    camState,
     currentCam,
     currentMic,
     currentSpeaker,
@@ -111,7 +121,7 @@ export default function App() {
   const noiseCancellationEnabled =
     inputSettings?.audio?.processor?.type === "noise-cancellation";
 
-  const { startScreenShare, stopScreenShare, screens, isSharingScreen } =
+  const { startScreenShare, stopScreenShare, isSharingScreen } =
     useScreenShare();
 
   const participantIds = useParticipantIds({
@@ -155,7 +165,7 @@ export default function App() {
   });
 
   const cpuLoad = useCPULoad({
-    onCPULoadChange: logEvent,
+    // onCPULoadChange: logEvent,
   });
 
   const { startRecording, stopRecording, isRecording } = useRecording({
@@ -167,7 +177,18 @@ export default function App() {
 
   useDailyEvent("load-attempt-failed", logEvent);
   useDailyEvent("joining-meeting", logEvent);
-  useDailyEvent("joined-meeting", logEvent);
+  useDailyEvent(
+    "joined-meeting",
+    useCallback(
+      (ev) => {
+        logEvent(ev);
+        if (!callObject) return;
+        callObject.setLocalVideo(true);
+        callObject.setLocalVideo(false);
+      },
+      [callObject, logEvent]
+    )
+  );
   useDailyEvent("track-started", logEvent);
   useDailyEvent("track-stopped", logEvent);
   useDailyEvent("started-camera", logEvent);
@@ -313,6 +334,7 @@ export default function App() {
       .join({
         url: dailyRoomUrl,
         token: dailyMeetingToken,
+        startVideoOff: true,
       })
       .catch((err) => {
         console.error("Error joining room:", err);
@@ -449,6 +471,9 @@ export default function App() {
 
   const meetingState = useMeetingState();
 
+  const localSessionId = useLocalSessionId();
+  const videoTrack = useVideoTrack(localSessionId);
+
   return (
     <>
       <div className="App">
@@ -477,8 +502,19 @@ export default function App() {
           }}
         />
         <br />
-        <button onClick={load}>Load</button> <br />
-        <button disabled={!dailyRoomUrl.length} onClick={preAuth}>
+        2. Change participant name (optional).
+        <br />
+        <input
+          type="text"
+          value={dailyParticipantName}
+          onChange={(event) => {
+            setDailyParticipantName(event.target.value);
+          }}
+        />
+        <br />
+        <br />
+        <button onClick={() => load()}>Load</button> <br />
+        <button disabled={!dailyRoomUrl.length} onClick={() => preAuth()}>
           Preauth
         </button>
         <br />
@@ -491,7 +527,9 @@ export default function App() {
         <br />
         <button onClick={leaveRoom}>Leave call</button>
         <br />
-        <button onClick={toggleRemoteMedia}>Toggle Remote Media Player</button>
+        <button onClick={() => toggleRemoteMedia()}>
+          Toggle Remote Media Player
+        </button>
         <hr />
         <br />
         2. Select your device <br />
@@ -586,27 +624,13 @@ export default function App() {
           Toggle Transcription
         </button>
       </div>
-      {participantIds.map((id) => (
-        <DailyVideo type="video" key={id} automirror sessionId={id} />
-      ))}
-      {screens.map((screen) => (
-        <DailyVideo
-          type="screenVideo"
-          key={screen.screenId}
-          automirror
-          sessionId={screen.session_id}
-        />
-      ))}
-      {participantIds.map((id) => (
-        // @ts-expect-error This works just fine but gives a typescript error
-        <DailyVideo type="customTrack" key={id} automirror sessionId={id} />
-      ))}
-      {rmpParticipantIds.map((id) => (
-        <DailyVideo type="rmpVideo" key={id} automirror sessionId={id} />
-      ))}
 
-      <DailyAudio />
-      <MicVolumeVisualizer />
+      <VCSPlayer />
+
+      <div>
+        Local Camera State: {camState} {cameraError ? cameraError.msg : null}
+      </div>
+      <div>Local Track State: {videoTrack ? videoTrack.state : null}</div>
       <div id="meetingState">Meeting State: {meetingState}</div>
       {inputSettings && <div>Input settings updated</div>}
       {errorMsg && <div id="errorMsg">{errorMsg}</div>}
@@ -620,3 +644,50 @@ export default function App() {
     </>
   );
 }
+
+const VCSPlayer = () => {
+  const participantIds = useParticipantIds({ sort: "joined_at" });
+  const { vcsContainerRef, vcsCompRef } = useVCS({
+    orderedParticipantIds: participantIds,
+    aspectRatio: 20,
+  });
+
+  // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-member-access
+  const state = vcsCompRef.current?.state ?? "unknown";
+
+  return (
+    <div>
+      <p>VCS State: {state}</p>
+      <button
+        onClick={() => {
+          if (vcsCompRef.current !== null) {
+            // eslint-disable-next-line @typescript-eslint/no-unsafe-call, @typescript-eslint/no-unsafe-member-access
+            vcsCompRef.current.start().catch((err) => {
+              console.error(err);
+            });
+            console.log("vcsCompRef.current", vcsCompRef.current);
+          }
+        }}
+      >
+        Start VCS
+      </button>
+      <button
+        onClick={() => {
+          if (vcsCompRef.current !== null) {
+            // eslint-disable-next-line @typescript-eslint/no-unsafe-call, @typescript-eslint/no-unsafe-member-access
+            vcsCompRef.current.stop();
+            console.log("vcsCompRef.current", vcsCompRef.current);
+          }
+        }}
+      >
+        Stop VCS
+      </button>
+
+      <div
+        id="divRef"
+        style={{ width: "50%", height: "50%" }}
+        ref={vcsContainerRef}
+      ></div>
+    </div>
+  );
+};
