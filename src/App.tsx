@@ -25,6 +25,7 @@ import {
 } from "@daily-co/daily-react";
 
 import "./styles.css";
+import { v4 as uuidv4 } from "uuid";
 
 console.info("Daily version: %s", Daily.version());
 console.info("Daily supported Browser:");
@@ -449,6 +450,50 @@ export default function App() {
 
   const meetingState = useMeetingState();
 
+  const localSessionId = useLocalSessionId();
+  const startTwoRecordings = useCallback(() => {
+    const participantRecordingInstanceId = uuidv4();
+    const screenRecordingInstanceId = uuidv4();
+    console.log(
+      "++ startTwoRecordings",
+      participantRecordingInstanceId,
+      screenRecordingInstanceId
+    );
+
+    startRecording({
+      instanceId: participantRecordingInstanceId,
+      width: 1080,
+      height: 640,
+      fps: 30,
+      videoBitrate: 2400,
+      audioBitrate: 120,
+      layout: {
+        preset: "custom",
+        composition_params: {
+          mode: "single",
+          "videoSettings.preferScreenshare": false,
+          "videoSettings.preferredParticipantIds": localSessionId,
+        },
+      },
+    });
+
+    startRecording({
+      instanceId: screenRecordingInstanceId,
+      width: 1920,
+      height: 1080,
+      fps: 15,
+      videoBitrate: 2400,
+      audioBitrate: 120,
+      layout: {
+        preset: "custom",
+        composition_params: {
+          mode: "single",
+          "videoSettings.preferScreenshare": true,
+        },
+      },
+    });
+  }, [localSessionId, startRecording]);
+
   return (
     <>
       <div className="App">
@@ -567,8 +612,8 @@ export default function App() {
         <br />
         <button onClick={stopCamera}>Camera Off</button>
         <button onClick={updateCameraOn}>Camera On</button> <br />
-        <button disabled={isRecording} onClick={() => startRecording()}>
-          Start Recording
+        <button disabled={isRecording} onClick={startTwoRecordings}>
+          Start 2 Recordings
         </button>
         <button disabled={!isRecording} onClick={() => stopRecording()}>
           Stop Recording
