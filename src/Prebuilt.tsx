@@ -5,8 +5,10 @@ import {
   useAppMessage,
   useCallFrame,
   useDaily,
+  useLocalSessionId,
   useParticipantCounts,
   useParticipantIds,
+  useParticipantProperty,
 } from "@daily-co/daily-react";
 import {
   DailyEventObject,
@@ -56,6 +58,12 @@ const App = () => {
       }
     }, []),
   });
+
+  const localSessionId = useLocalSessionId();
+
+  // This doesn't work because we can't access Prebuilt's user data :(
+  const userData = useParticipantProperty(localSessionId, "userData");
+  console.log("User data:", userData);
 
   return (
     <>
