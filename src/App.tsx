@@ -7,6 +7,7 @@ import Daily, {
 import {
   DailyAudio,
   DailyVideo,
+  ExtendedDailyParticipant,
   useAudioLevelObserver,
   useCPULoad,
   useDaily,
@@ -115,6 +116,18 @@ export default function App() {
     useScreenShare();
 
   const participantIds = useParticipantIds({
+    sort: useCallback(
+      (a: ExtendedDailyParticipant, b: ExtendedDailyParticipant) => {
+        // Sort by last active speaker time, descending
+        const lastActiveA = a.last_active ?? new Date("1970-01-01");
+        const lastActiveB = b.last_active ?? new Date("1970-01-01");
+
+        if (lastActiveA > lastActiveB) return 1;
+        if (lastActiveA < lastActiveB) return -1;
+        return 0;
+      },
+      []
+    ),
     onParticipantJoined: useCallback(
       (ev: DailyEventObjectParticipant) => {
         logEvent(ev);
@@ -247,7 +260,17 @@ export default function App() {
   }, [callObject, noiseCancellationEnabled, updateInputSettings]);
 
   const rmpParticipantIds = useParticipantIds({
-    sort: "joined_at",
+    sort: useCallback(
+      (a: ExtendedDailyParticipant, b: ExtendedDailyParticipant) => {
+        // Sort by last active speaker time, descending
+        const lastActiveA = a.last_active ?? new Date("1970-01-01");
+        const lastActiveB = b.last_active ?? new Date("1970-01-01");
+        if (lastActiveA > lastActiveB) return 1;
+        if (lastActiveA < lastActiveB) return -1;
+        return 0;
+      },
+      []
+    ),
     filter: (p) => p.participantType === "remote-media-player",
   });
 
