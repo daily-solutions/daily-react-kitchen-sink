@@ -1,6 +1,6 @@
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
-import { Prebuilt } from "./Prebuilt";
+import { Prebuilt } from "./CustomPrebuilt";
 import { DailyProvider } from "@daily-co/daily-react";
 import App from "./App";
 
