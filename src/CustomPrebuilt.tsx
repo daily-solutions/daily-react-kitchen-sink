@@ -7,8 +7,7 @@ export const Prebuilt = () => {
   const url = urlParams.get("url") ?? "https://hush.daily.co/demo";
   const token = urlParams.get("token") ?? "";
   const userName = urlParams.get("userName") ?? "Guest";
-  const callRef =
-    useRef<HTMLDivElement>() as React.MutableRefObject<HTMLDivElement>;
+  const callRef = useRef<HTMLDivElement>(document.createElement("div"));
 
   const callFrame = useCallFrame({
     parentElRef: callRef,
