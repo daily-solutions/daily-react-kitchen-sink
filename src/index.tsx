@@ -12,21 +12,8 @@ if (!container) {
 
 const root = createRoot(container);
 
-// Get the value from the url
-const urlParams = new URLSearchParams(window.location.search);
-const isPrebuilt = urlParams.get("prebuilt") ?? false;
-
 root.render(
   <StrictMode>
-    {isPrebuilt ? (
-      <Prebuilt />
-    ) : (
-      <DailyProvider
-        subscribeToTracksAutomatically={false}
-        dailyConfig={{ useDevicePreferenceCookies: true }}
-      >
-        <App />
-      </DailyProvider>
-    )}
+    <Prebuilt />
   </StrictMode>
 );

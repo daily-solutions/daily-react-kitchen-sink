@@ -9,9 +9,10 @@ import {
   useNetwork,
   useParticipantIds,
 } from "@daily-co/daily-react";
-import {
+import Daily, {
   DailyEventObject,
   DailyEventObjectParticipantLeft,
+  DailyInputSettings,
 } from "@daily-co/daily-js";
 
 // Stub objects to keep TypeScript happy
@@ -83,6 +84,12 @@ export function useDailyQualityMetrics({
 
   // Use the CPU load hook
   const cpuLoad = useCPULoad();
+
+  if (cpuLoad.state === "high") {
+    alert(
+      "High CPU load detected. This may affect call quality. Please turn off noise cancellation or video effects if enabled."
+    );
+  }
 
   // Effect to track network quality changes
   useEffect(() => {
@@ -278,6 +285,16 @@ export const Prebuilt = () => {
   const userName = urlParams.get("userName") ?? "Guest";
   const callRef = useRef<HTMLDivElement>(document.createElement("div"));
 
+  const { mobile, supportsAudioProcessing } = Daily.supportedBrowser();
+  const enableNoiseCancellation = !mobile && supportsAudioProcessing;
+  const inputSettings: DailyInputSettings = {
+    audio: {
+      processor: {
+        type: enableNoiseCancellation ? "noise-cancellation" : "none",
+      },
+    },
+  };
+
   const callFrame = useCallFrame({
     parentElRef: callRef,
     options: {
@@ -289,6 +306,7 @@ export const Prebuilt = () => {
       url,
       token,
       userName,
+      inputSettings,
     },
     shouldCreateInstance: useCallback(() => Boolean(callRef.current), []),
   });
