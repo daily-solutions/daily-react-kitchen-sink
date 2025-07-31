@@ -25,6 +25,7 @@ import {
 } from "@daily-co/daily-react";
 
 import "./styles.css";
+import html2canvas from "html2canvas";
 
 console.info("Daily version: %s", Daily.version());
 console.info("Daily supported Browser:");
@@ -339,17 +340,15 @@ export default function App() {
     if (!callObject) {
       return;
     }
-    navigator.mediaDevices
-      .getUserMedia({ video: true })
-      .then((customTrack) => {
-        return callObject.startCustomTrack({
-          track: customTrack.getVideoTracks()[0],
-          trackName: "customTrack",
-        });
-      })
-      .catch((err) => {
-        console.error("Error enabling customTrack", err);
-      });
+    if (!canvasRef.current) {
+      console.error("Canvas ref is not set");
+      return;
+    }
+    const stream = canvasRef.current.captureStream(15); // 15 FPS
+    const customTrack = stream.getVideoTracks()[0];
+    callObject.startCustomTrack({ track: customTrack }).catch((err) => {
+      console.error("Error starting custom track:", err);
+    });
   }, [callObject]);
 
   const load = useCallback(() => {
@@ -449,9 +448,58 @@ export default function App() {
 
   const meetingState = useMeetingState();
 
+  const containerRef = useRef<HTMLDivElement>(null);
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+
+  // Update canvas 15 times per second
+  React.useEffect(() => {
+    let intervalId: NodeJS.Timeout | null = null;
+    function updateCanvas() {
+      if (containerRef.current && canvasRef.current) {
+        html2canvas(containerRef.current, { useCORS: true })
+          .then((snapshot) => {
+            if (!canvasRef.current) return;
+            const ctx = canvasRef.current.getContext("2d");
+            if (ctx) {
+              ctx.clearRect(
+                0,
+                0,
+                canvasRef.current.width,
+                canvasRef.current.height
+              );
+              ctx.drawImage(
+                snapshot,
+                0,
+                0,
+                canvasRef.current.width,
+                canvasRef.current.height
+              );
+            }
+          })
+          .catch((err) => {
+            console.error("Error updating canvas:", err);
+          });
+      }
+    }
+    intervalId = setInterval(updateCanvas, 1000 / 15);
+    return () => {
+      if (intervalId) clearInterval(intervalId);
+    };
+  }, []);
+
   return (
     <>
       <div className="App">
+        <div ref={containerRef} className="container">
+          <h1>HTML Canvas Demo</h1>
+          <p>This should appear in the custom track.</p>
+        </div>
+        <canvas
+          ref={canvasRef}
+          width={640}
+          height={360}
+          style={{ display: "none" }}
+        />
         <br />
         1. Join the call
         <br />
@@ -599,7 +647,7 @@ export default function App() {
       ))}
       {participantIds.map((id) => (
         // @ts-expect-error This works just fine but gives a typescript error
-        <DailyVideo type="customTrack" key={id} automirror sessionId={id} />
+        <DailyVideo type="customVideo0" key={id} sessionId={id} />
       ))}
       {rmpParticipantIds.map((id) => (
         <DailyVideo type="rmpVideo" key={id} automirror sessionId={id} />
