@@ -1,101 +1,66 @@
 import "./styles.css";
-import { useCallback, useEffect, useRef } from "react";
+import { useCallback, useEffect, useRef, forwardRef } from "react";
 import {
   DailyProvider,
-  useAppMessage,
   useCallFrame,
-  useDaily,
+  useLocalSessionId,
   useParticipantCounts,
-  useParticipantIds,
+  useParticipantProperty,
 } from "@daily-co/daily-react";
-import {
-  DailyEventObject,
-  DailyEventObjectAppMessage,
-} from "@daily-co/daily-js";
 
-const App = () => {
-  const callObject = useDaily();
-
-  // @ts-expect-error debugging
-  window.callObject = callObject;
-
-  const participantCount = useParticipantCounts();
-
-  const logEvent = useCallback((evt: DailyEventObject) => {
-    if ("action" in evt) {
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
-      console.log(`logEvent: ${evt.action}`, evt);
-    } else {
-      console.log("logEvent:", evt);
-    }
-  }, []);
-
-  useParticipantIds({
-    onParticipantJoined: logEvent,
-    onParticipantLeft: logEvent,
-    onParticipantUpdated: logEvent,
-  });
-
-  type PrebuiltAppMessage = DailyEventObjectAppMessage<{
-    date: string;
-    event: "chat-msg"; // There's other events too
-    message: string;
-    name: string;
-    room: string;
-  }>;
-
-  const sendAppMessage = useAppMessage({
-    onAppMessage: useCallback((message: PrebuiltAppMessage) => {
-      console.log(message);
-      switch (message.data.event) {
-        case "chat-msg":
-          console.log("Chat message:", message.data.message);
-          break;
-        default:
-          console.log("Unknown event:", message.data.event);
-      }
-    }, []),
-  });
-
+const CallContainer = forwardRef<HTMLDivElement>((_, ref) => {
+  const participantCount = useParticipantCounts().present;
+  const localSessionId = useLocalSessionId();
+  const userName = useParticipantProperty(localSessionId, "user_name");
   return (
     <>
-      <button
-        onClick={() =>
-          sendAppMessage({
-            event: "chat-msg",
-            date: Date.now().toString(),
-            message: "Hello from button!",
-            name: "button",
-            room: "main-room",
-          })
-        }
-      >
-        Send message
-      </button>
-      <span>{participantCount.present} participants</span>
+      <div ref={ref} />
+      <span>Participant count: {participantCount}</span>
+      <span>User joined as {userName}</span>
     </>
   );
-};
+});
 
 export const Prebuilt = () => {
-  const wrapperRef = useRef<HTMLDivElement>(null);
+  const telehealthResponse = {
+    meetingLink: "https://hush.daily.co/demo",
+  };
+  const callRef = useRef<HTMLDivElement>(null);
   const callFrame = useCallFrame({
     // @ts-expect-error will be fixed in the next release
-    parentElRef: wrapperRef,
+    parentElRef: callRef,
     options: {
-      dailyConfig: {
-        useDevicePreferenceCookies: true,
+      url: telehealthResponse.meetingLink,
+      // token: "You'll want to set this to a valid token or else anyone can join the call.",
+      showFullscreenButton: true,
+      inputSettings: {
+        audio: {
+          processor: {
+            type: "noise-cancellation",
+          },
+        },
       },
-      url: "https://hush.daily.co/demo",
       iframeStyle: {
         width: "100%",
-        height: "80vh",
+        height: "100%",
+        position: "absolute",
       },
-      userData: {
-        avatar: "https://www.svgrepo.com/show/532036/cloud-rain-alt.svg",
+      theme: {
+        colors: {
+          accent: "#0b663d",
+          accentText: "#FFF",
+          background: "#121A24",
+          backgroundAccent: "#1F2D3D",
+          baseText: "#FFFFFF",
+          border: "#2B3F56",
+          mainAreaBg: "#121A24",
+          mainAreaBgAccent: "#2B3F56",
+          mainAreaText: "#FFFFFF",
+          supportiveText: "#C8D1DC",
+        },
       },
     },
-    shouldCreateInstance: useCallback(() => Boolean(wrapperRef.current), []),
+    shouldCreateInstance: useCallback(() => Boolean(callRef.current), []),
   });
 
   useEffect(() => {
@@ -106,8 +71,7 @@ export const Prebuilt = () => {
   }, [callFrame]);
   return (
     <DailyProvider callObject={callFrame}>
-      <div ref={wrapperRef} />
-      <App />
+      <CallContainer ref={callRef} />
     </DailyProvider>
   );
 };
