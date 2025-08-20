@@ -115,6 +115,7 @@ export default function App() {
     useScreenShare();
 
   const participantIds = useParticipantIds({
+    sort: "joined_at",
     onParticipantJoined: useCallback(
       (ev: DailyEventObjectParticipant) => {
         logEvent(ev);
@@ -586,7 +587,7 @@ export default function App() {
           Toggle Transcription
         </button>
       </div>
-      {participantIds.map((id) => (
+      {participantIds.slice(0, 10).map((id) => (
         <DailyVideo type="video" key={id} automirror sessionId={id} />
       ))}
       {screens.map((screen) => (
