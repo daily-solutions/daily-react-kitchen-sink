@@ -26,6 +26,32 @@ import {
 
 import "./styles.css";
 
+// Experimental / non-standard API type shims (CropTarget + cropTo) and DailyVideo customTrack support
+type CropTarget = object;
+interface CropTargetAPI {
+  fromElement(el: Element): Promise<CropTarget>;
+}
+interface CroppableMediaStreamTrack extends MediaStreamTrack {
+  cropTo?: (cropTarget: CropTarget) => Promise<void>;
+}
+
+declare global {
+  interface Window {
+    CropTarget?: CropTargetAPI;
+  }
+}
+
+// Module augmentation for DailyVideo to allow customTrack (pending upstream types)
+// If upstream adds this, the augmentation will harmlessly merge.
+declare module "@daily-co/daily-react" {
+  // eslint-disable-next-line @typescript-eslint/no-empty-interface
+  interface DailyVideoProps {
+    // extend accepted types
+    type?: "video" | "screenVideo" | "rmpVideo" | "customTrack";
+    trackName?: string; // for distinguishing multiple custom tracks
+  }
+}
+
 console.info("Daily version: %s", Daily.version());
 console.info("Daily supported Browser:");
 console.dir(Daily.supportedBrowser());
@@ -68,9 +94,12 @@ export default function App() {
   // @ts-expect-error add callObject to window for debugging
   window.callObject = callObject;
 
+  // Ref for iframe to capture
+  const iframeRef = useRef<HTMLIFrameElement | null>(null);
+
   const [enableBlurClicked, setEnableBlurClicked] = useState(false);
   const [enableBackgroundClicked, setEnableBackgroundClicked] = useState(false);
-  const [dailyRoomUrl, setDailyRoomUrl] = useState("");
+  const [dailyRoomUrl, setDailyRoomUrl] = useState("https://hush.daily.co/sfu");
   const [dailyMeetingToken, setDailyMeetingToken] = useState("");
 
   const {
@@ -335,22 +364,84 @@ export default function App() {
       });
   }, [callObject]);
 
-  const startCustomTrack = useCallback(() => {
-    if (!callObject) {
-      return;
-    }
-    navigator.mediaDevices
-      .getUserMedia({ video: true })
-      .then((customTrack) => {
-        return callObject.startCustomTrack({
-          track: customTrack.getVideoTracks()[0],
-          trackName: "customTrack",
-        });
-      })
-      .catch((err) => {
-        console.error("Error enabling customTrack", err);
+  // --- Iframe (tab region) capture as a custom track ---
+  const [iframeTrack, setIframeTrack] = useState<MediaStreamTrack | null>(null);
+
+  const startIframeCustomTrack = useCallback(async () => {
+    if (!callObject || iframeTrack) return;
+    try {
+      const iframe = iframeRef.current;
+      if (!iframe) {
+        console.warn("No iframe element found to capture");
+        return;
+      } else {
+        console.log("Found iframe to capture", iframe);
+      }
+
+      // Capture the current tab (user will be prompted). We request browser surface
+      // so that we can crop to the iframe element afterwards (CropTarget API).
+      const stream = await navigator.mediaDevices.getDisplayMedia({
+        video: {
+          displaySurface: "browser",
+        },
+        audio: false,
       });
-  }, [callObject]);
+      const [videoTrack] = stream.getVideoTracks();
+      if (!videoTrack) {
+        console.error("No video track returned from getDisplayMedia");
+        return;
+      } else {
+        console.log("Found video track to capture", videoTrack);
+      }
+
+      // Attempt to crop to the iframe element if the CropTarget API is available.
+      try {
+        const cropApi = window.CropTarget;
+        if (cropApi?.fromElement) {
+          const cropTarget = await cropApi.fromElement(iframe);
+          const croppable = videoTrack as CroppableMediaStreamTrack;
+          if (cropTarget && typeof croppable.cropTo === "function") {
+            await croppable.cropTo(cropTarget);
+            console.log("Applied cropTo iframe element");
+          }
+        } else {
+          console.warn(
+            "CropTarget API not supported in this browser; using full tab stream"
+          );
+        }
+      } catch (cropErr) {
+        console.warn(
+          "Failed to crop to iframe element; proceeding with full tab stream",
+          cropErr
+        );
+      }
+
+      await callObject.startCustomTrack({
+        track: videoTrack,
+      });
+      setIframeTrack(videoTrack);
+      videoTrack.addEventListener("ended", () => {
+        setIframeTrack(null);
+      });
+    } catch (err) {
+      console.error("Error starting iframe custom track", err);
+    }
+  }, [callObject, iframeTrack]);
+
+  const stopIframeCustomTrack = useCallback(async () => {
+    if (!callObject || !iframeTrack) return;
+    try {
+      await callObject.stopCustomTrack("iframeTrack");
+    } catch (err) {
+      console.error("Error stopping iframe custom track in Daily", err);
+    }
+    try {
+      iframeTrack.stop();
+    } catch (err) {
+      console.warn("Error stopping underlying iframe track", err);
+    }
+    setIframeTrack(null);
+  }, [callObject, iframeTrack]);
 
   const load = useCallback(() => {
     if (!callObject) {
@@ -483,7 +574,18 @@ export default function App() {
         </button>
         <br />
         <button onClick={startCamera}>Start Camera</button> <br />
-        <button onClick={startCustomTrack}>Start Custom Track</button>
+        <br />
+        <button
+          onClick={() => {
+            if (iframeTrack) {
+              void stopIframeCustomTrack();
+            } else {
+              void startIframeCustomTrack();
+            }
+          }}
+        >
+          {iframeTrack ? "Stop iFrame Track" : "Start iFrame Track"}
+        </button>
         <br />
         <button disabled={!dailyRoomUrl.length} onClick={joinRoom}>
           Join call
@@ -586,6 +688,19 @@ export default function App() {
           Toggle Transcription
         </button>
       </div>
+      <iframe
+        ref={iframeRef}
+        id="iframeCustomTrack"
+        title="Daily meeting embed"
+        // Use the current room URL if provided; fall back to Daily homepage
+        src="https://www.example.com"
+        width="600"
+        height="400"
+        allow="camera; microphone; display-capture; autoplay; clipboard-write; encrypted-media; fullscreen; picture-in-picture"
+        allowFullScreen
+        loading="eager"
+        style={{ border: 0 }}
+      />
       {participantIds.map((id) => (
         <DailyVideo type="video" key={id} automirror sessionId={id} />
       ))}
@@ -597,14 +712,30 @@ export default function App() {
           sessionId={screen.session_id}
         />
       ))}
-      {participantIds.map((id) => (
-        // @ts-expect-error This works just fine but gives a typescript error
-        <DailyVideo type="customTrack" key={id} automirror sessionId={id} />
-      ))}
-      {rmpParticipantIds.map((id) => (
-        <DailyVideo type="rmpVideo" key={id} automirror sessionId={id} />
-      ))}
+      {participantIds.map((id) => {
+        return (
+          <DailyVideo
+            //@ts-expect-error will be fixed in the next release
+            type="customTrack"
+            key={id + "-customTrack"}
+            automirror
+            sessionId={id}
+          />
+        );
+      })}
+      {participantIds.map((id) => {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
 
+        return (
+          <DailyVideo
+            // @ts-expect-error will be fixed in the next release
+            type="customTrack"
+            key={id + "-iframeTrack"}
+            automirror
+            sessionId={id}
+          />
+        );
+      })}
       <DailyAudio />
       <MicVolumeVisualizer />
       <div id="meetingState">Meeting State: {meetingState}</div>
