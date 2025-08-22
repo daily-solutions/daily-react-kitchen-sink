@@ -37,14 +37,6 @@ declare global {
   }
 }
 
-// (Legacy) Module augmentation kept in case custom tracks are reintroduced
-declare module "@daily-co/daily-react" {
-  interface DailyVideoProps {
-    type?: "video" | "screenVideo" | "rmpVideo" | "customTrack";
-    trackName?: string;
-  }
-}
-
 console.info("Daily version: %s", Daily.version());
 console.info("Daily supported Browser:");
 console.dir(Daily.supportedBrowser());
