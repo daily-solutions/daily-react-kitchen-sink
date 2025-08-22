@@ -21,8 +21,8 @@ import {
   useParticipantIds,
   useRecording,
   useScreenShare,
-  useMediaTrack,
   useTranscription,
+  useScreenVideoTrack,
 } from "@daily-co/daily-react";
 
 // Experimental / non-standard API type shims (CropTarget + cropTo)
@@ -130,10 +130,7 @@ export default function App() {
 
   // Local session id & screenVideo track (via daily-react hooks instead of polling)
   const localSessionId = useLocalSessionId();
-  const { track: localScreenVideoTrack } = useMediaTrack(
-    localSessionId,
-    "screenVideo"
-  );
+  const { track: localScreenVideoTrack } = useScreenVideoTrack(localSessionId);
   const hasCroppedRef = useRef(false);
 
   const participantIds = useParticipantIds({
@@ -359,33 +356,22 @@ export default function App() {
 
   // --- Tab screen share using Daily startScreenShare (instead of custom track) ---
   const startTabShare = useCallback(() => {
-    if (!callObject) return;
-    try {
-      type MaybePromise = void | Promise<void>;
-      const maybePromise = callObject.startScreenShare({
-        displayMediaOptions: {
-          audio: false,
-          selfBrowserSurface: "include",
-          surfaceSwitching: "include",
-          systemAudio: "exclude",
-          video: true,
-        },
-        screenVideoSendSettings: "motion-and-detail-balanced",
-      }) as MaybePromise;
-      if (maybePromise instanceof Promise) {
-        maybePromise.catch((err) => {
-          console.error("startScreenShare failed", err);
-        });
-      }
-    } catch (err) {
-      console.error("startScreenShare threw", err);
-    }
-  }, [callObject]);
+    if (isSharingScreen) return;
+    startScreenShare({
+      displayMediaOptions: {
+        audio: false,
+        selfBrowserSurface: "include",
+        surfaceSwitching: "include",
+        systemAudio: "exclude",
+        video: true,
+      },
+      screenVideoSendSettings: "motion-and-detail-balanced",
+    });
+  }, [isSharingScreen, startScreenShare]);
   const stopTabShare = useCallback(() => {
-    if (!callObject) return;
-    callObject.stopScreenShare();
+    stopScreenShare();
     hasCroppedRef.current = false; // reset for next share
-  }, [callObject]);
+  }, [stopScreenShare]);
 
   // Crop effect: runs once when screen share starts and track is available
   useEffect(() => {
