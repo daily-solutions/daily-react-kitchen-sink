@@ -1,4 +1,4 @@
-import React, { useCallback, useRef, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import Daily, {
   DailyEventObject,
   DailyEventObjectParticipant,
@@ -21,6 +21,7 @@ import {
   useParticipantIds,
   useRecording,
   useScreenShare,
+  useMediaTrack,
   useTranscription,
 } from "@daily-co/daily-react";
 
@@ -134,6 +135,14 @@ export default function App() {
 
   const { startScreenShare, stopScreenShare, screens, isSharingScreen } =
     useScreenShare();
+
+  // Local session id & screenVideo track (via daily-react hooks instead of polling)
+  const localSessionId = useLocalSessionId();
+  const { track: localScreenVideoTrack } = useMediaTrack(
+    localSessionId,
+    "screenVideo"
+  );
+  const hasCroppedRef = useRef(false);
 
   const participantIds = useParticipantIds({
     onParticipantJoined: useCallback(
@@ -376,69 +385,6 @@ export default function App() {
           console.error("startScreenShare failed", err);
         });
       }
-
-      // After initiating screen share, attempt to crop to the iframe element (Chrome experimental CropTarget API)
-      const attemptCrop = async () => {
-        try {
-          const iframeEl = iframeRef.current;
-          if (!iframeEl) {
-            console.warn("No iframe element to crop to");
-            return;
-          }
-          const cropAPI = (window as unknown as { CropTarget?: CropTargetAPI })
-            .CropTarget;
-          if (!cropAPI?.fromElement) {
-            console.warn("CropTarget API not available in this browser build");
-            return;
-          }
-          // Wait for the local screenVideo track to exist
-          const waitForTrack = () =>
-            new Promise<MediaStreamTrack>((resolve, reject) => {
-              const start = performance.now();
-              const timeoutMs = 4000;
-              const poll = () => {
-                const participantsMap = callObject?.participants?.();
-                interface Tracks {
-                  screenVideo?: { track?: MediaStreamTrack };
-                }
-                const localParticipant = participantsMap?.local as
-                  | { tracks?: Tracks }
-                  | undefined;
-                const track = localParticipant?.tracks?.screenVideo?.track;
-                if (track) return resolve(track);
-                if (performance.now() - start > timeoutMs) {
-                  return reject(
-                    new Error("Timed out waiting for screenVideo track")
-                  );
-                }
-                requestAnimationFrame(poll);
-              };
-              poll();
-            });
-
-          const track = await waitForTrack();
-          const cropTarget = await cropAPI.fromElement(iframeEl);
-          // @ts-expect-error cropTo is experimental and not in lib DOM types yet
-          if (typeof track.cropTo !== "function") {
-            console.warn("cropTo not supported on captured track");
-            return;
-          }
-          interface CroppableTrack extends MediaStreamTrack {
-            // Experimental method (Chrome only)
-            cropTo?: (target: CropTarget) => Promise<void>;
-          }
-          const croppable = track as CroppableTrack;
-          if (typeof croppable.cropTo === "function") {
-            await croppable.cropTo(cropTarget);
-          } else {
-            console.warn("cropTo not implemented on track instance");
-          }
-          console.log("Successfully cropped screen share to iframe region");
-        } catch (cropErr) {
-          console.error("Cropping screen share to iframe failed", cropErr);
-        }
-      };
-      void attemptCrop();
     } catch (err) {
       console.error("startScreenShare threw", err);
     }
@@ -446,7 +392,40 @@ export default function App() {
   const stopTabShare = useCallback(() => {
     if (!callObject) return;
     callObject.stopScreenShare();
+    hasCroppedRef.current = false; // reset for next share
   }, [callObject]);
+
+  // Crop effect: runs once when screen share starts and track is available
+  useEffect(() => {
+    if (!isSharingScreen) return;
+    if (hasCroppedRef.current) return; // already cropped this session
+    if (!iframeRef.current) return;
+    const track = localScreenVideoTrack;
+    if (!track) return;
+
+    const cropAPI = (window as unknown as { CropTarget?: CropTargetAPI })
+      .CropTarget;
+    if (!cropAPI?.fromElement) return;
+
+    void (async () => {
+      try {
+        const cropTarget = await cropAPI.fromElement(iframeRef.current!);
+        interface CroppableTrack extends MediaStreamTrack {
+          cropTo?: (target: CropTarget) => Promise<void>;
+        }
+        const croppable = track as CroppableTrack;
+        if (typeof croppable.cropTo === "function") {
+          await croppable.cropTo(cropTarget);
+          hasCroppedRef.current = true;
+          console.log("Cropped screen share to iframe via useMediaTrack");
+        } else {
+          console.warn("cropTo not implemented on this MediaStreamTrack");
+        }
+      } catch (e) {
+        console.error("Failed to crop screen share", e);
+      }
+    })();
+  }, [isSharingScreen, localScreenVideoTrack]);
 
   const load = useCallback(() => {
     if (!callObject) {
