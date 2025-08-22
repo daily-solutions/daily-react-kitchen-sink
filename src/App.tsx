@@ -24,15 +24,10 @@ import {
   useTranscription,
 } from "@daily-co/daily-react";
 
-import "./styles.css";
-
-// Experimental / non-standard API type shims (CropTarget + cropTo) and DailyVideo customTrack support
-type CropTarget = object;
+// Experimental / non-standard API type shims (CropTarget + cropTo)
+type CropTarget = object; // opaque handle provided by browser
 interface CropTargetAPI {
   fromElement(el: Element): Promise<CropTarget>;
-}
-interface CroppableMediaStreamTrack extends MediaStreamTrack {
-  cropTo?: (cropTarget: CropTarget) => Promise<void>;
 }
 
 declare global {
@@ -41,14 +36,11 @@ declare global {
   }
 }
 
-// Module augmentation for DailyVideo to allow customTrack (pending upstream types)
-// If upstream adds this, the augmentation will harmlessly merge.
+// (Legacy) Module augmentation kept in case custom tracks are reintroduced
 declare module "@daily-co/daily-react" {
-  // eslint-disable-next-line @typescript-eslint/no-empty-interface
   interface DailyVideoProps {
-    // extend accepted types
     type?: "video" | "screenVideo" | "rmpVideo" | "customTrack";
-    trackName?: string; // for distinguishing multiple custom tracks
+    trackName?: string;
   }
 }
 
@@ -364,84 +356,97 @@ export default function App() {
       });
   }, [callObject]);
 
-  // --- Iframe (tab region) capture as a custom track ---
-  const [iframeTrack, setIframeTrack] = useState<MediaStreamTrack | null>(null);
-
-  const startIframeCustomTrack = useCallback(async () => {
-    if (!callObject || iframeTrack) return;
+  // --- Tab screen share using Daily startScreenShare (instead of custom track) ---
+  const startTabShare = useCallback(() => {
+    if (!callObject) return;
     try {
-      const iframe = iframeRef.current;
-      if (!iframe) {
-        console.warn("No iframe element found to capture");
-        return;
-      } else {
-        console.log("Found iframe to capture", iframe);
-      }
-
-      // Capture the current tab (user will be prompted). We request browser surface
-      // so that we can crop to the iframe element afterwards (CropTarget API).
-      const stream = await navigator.mediaDevices.getDisplayMedia({
-        video: {
-          displaySurface: "browser",
+      type MaybePromise = void | Promise<void>;
+      const maybePromise = callObject.startScreenShare({
+        displayMediaOptions: {
+          audio: false,
+          selfBrowserSurface: "include",
+          surfaceSwitching: "include",
+          systemAudio: "exclude",
+          video: true,
         },
-        audio: false,
-      });
-      const [videoTrack] = stream.getVideoTracks();
-      if (!videoTrack) {
-        console.error("No video track returned from getDisplayMedia");
-        return;
-      } else {
-        console.log("Found video track to capture", videoTrack);
+        screenVideoSendSettings: "motion-and-detail-balanced",
+      }) as MaybePromise;
+      if (maybePromise instanceof Promise) {
+        maybePromise.catch((err) => {
+          console.error("startScreenShare failed", err);
+        });
       }
 
-      // Attempt to crop to the iframe element if the CropTarget API is available.
-      try {
-        const cropApi = window.CropTarget;
-        if (cropApi?.fromElement) {
-          const cropTarget = await cropApi.fromElement(iframe);
-          const croppable = videoTrack as CroppableMediaStreamTrack;
-          if (cropTarget && typeof croppable.cropTo === "function") {
-            await croppable.cropTo(cropTarget);
-            console.log("Applied cropTo iframe element");
+      // After initiating screen share, attempt to crop to the iframe element (Chrome experimental CropTarget API)
+      const attemptCrop = async () => {
+        try {
+          const iframeEl = iframeRef.current;
+          if (!iframeEl) {
+            console.warn("No iframe element to crop to");
+            return;
           }
-        } else {
-          console.warn(
-            "CropTarget API not supported in this browser; using full tab stream"
-          );
+          const cropAPI = (window as unknown as { CropTarget?: CropTargetAPI })
+            .CropTarget;
+          if (!cropAPI?.fromElement) {
+            console.warn("CropTarget API not available in this browser build");
+            return;
+          }
+          // Wait for the local screenVideo track to exist
+          const waitForTrack = () =>
+            new Promise<MediaStreamTrack>((resolve, reject) => {
+              const start = performance.now();
+              const timeoutMs = 4000;
+              const poll = () => {
+                const participantsMap = callObject?.participants?.();
+                interface Tracks {
+                  screenVideo?: { track?: MediaStreamTrack };
+                }
+                const localParticipant = participantsMap?.local as
+                  | { tracks?: Tracks }
+                  | undefined;
+                const track = localParticipant?.tracks?.screenVideo?.track;
+                if (track) return resolve(track);
+                if (performance.now() - start > timeoutMs) {
+                  return reject(
+                    new Error("Timed out waiting for screenVideo track")
+                  );
+                }
+                requestAnimationFrame(poll);
+              };
+              poll();
+            });
+
+          const track = await waitForTrack();
+          const cropTarget = await cropAPI.fromElement(iframeEl);
+          // @ts-expect-error cropTo is experimental and not in lib DOM types yet
+          if (typeof track.cropTo !== "function") {
+            console.warn("cropTo not supported on captured track");
+            return;
+          }
+          interface CroppableTrack extends MediaStreamTrack {
+            // Experimental method (Chrome only)
+            cropTo?: (target: CropTarget) => Promise<void>;
+          }
+          const croppable = track as CroppableTrack;
+          if (typeof croppable.cropTo === "function") {
+            await croppable.cropTo(cropTarget);
+          } else {
+            console.warn("cropTo not implemented on track instance");
+          }
+          console.log("Successfully cropped screen share to iframe region");
+        } catch (cropErr) {
+          console.error("Cropping screen share to iframe failed", cropErr);
         }
-      } catch (cropErr) {
-        console.warn(
-          "Failed to crop to iframe element; proceeding with full tab stream",
-          cropErr
-        );
-      }
-
-      await callObject.startCustomTrack({
-        track: videoTrack,
-      });
-      setIframeTrack(videoTrack);
-      videoTrack.addEventListener("ended", () => {
-        setIframeTrack(null);
-      });
+      };
+      void attemptCrop();
     } catch (err) {
-      console.error("Error starting iframe custom track", err);
+      console.error("startScreenShare threw", err);
     }
-  }, [callObject, iframeTrack]);
-
-  const stopIframeCustomTrack = useCallback(async () => {
-    if (!callObject || !iframeTrack) return;
-    try {
-      await callObject.stopCustomTrack("iframeTrack");
-    } catch (err) {
-      console.error("Error stopping iframe custom track in Daily", err);
-    }
-    try {
-      iframeTrack.stop();
-    } catch (err) {
-      console.warn("Error stopping underlying iframe track", err);
-    }
-    setIframeTrack(null);
-  }, [callObject, iframeTrack]);
+  }, [callObject]);
+  const stopTabShare = useCallback(() => {
+    if (!callObject) return;
+    callObject.stopScreenShare();
+  }, [callObject]);
 
   const load = useCallback(() => {
     if (!callObject) {
@@ -577,14 +582,14 @@ export default function App() {
         <br />
         <button
           onClick={() => {
-            if (iframeTrack) {
-              void stopIframeCustomTrack();
+            if (isSharingScreen) {
+              stopTabShare();
             } else {
-              void startIframeCustomTrack();
+              startTabShare();
             }
           }}
         >
-          {iframeTrack ? "Stop iFrame Track" : "Start iFrame Track"}
+          {isSharingScreen ? "Stop Tab Share" : "Start Tab Share"}
         </button>
         <br />
         <button disabled={!dailyRoomUrl.length} onClick={joinRoom}>
@@ -688,54 +693,34 @@ export default function App() {
           Toggle Transcription
         </button>
       </div>
-      <iframe
-        ref={iframeRef}
-        id="iframeCustomTrack"
-        title="Daily meeting embed"
-        // Use the current room URL if provided; fall back to Daily homepage
-        src="https://www.example.com"
-        width="600"
-        height="400"
-        allow="camera; microphone; display-capture; autoplay; clipboard-write; encrypted-media; fullscreen; picture-in-picture"
-        allowFullScreen
-        loading="eager"
-        style={{ border: 0 }}
-      />
-      {participantIds.map((id) => (
-        <DailyVideo type="video" key={id} automirror sessionId={id} />
-      ))}
-      {screens.map((screen) => (
-        <DailyVideo
-          type="screenVideo"
-          key={screen.screenId}
-          automirror
-          sessionId={screen.session_id}
+      <div className="share-layout">
+        <iframe
+          ref={iframeRef}
+          id="iframeCustomTrack"
+          title="Daily meeting embed"
+          src="https://www.example.com"
+          width="600"
+          height="400"
+          allow="camera; microphone; display-capture; autoplay; clipboard-write; encrypted-media; fullscreen; picture-in-picture"
+          allowFullScreen
+          loading="eager"
+          style={{ border: 0 }}
         />
-      ))}
-      {participantIds.map((id) => {
-        return (
+        {screens.map((screen) => (
           <DailyVideo
-            //@ts-expect-error will be fixed in the next release
-            type="customTrack"
-            key={id + "-customTrack"}
+            className="screen-share-video"
+            type="screenVideo"
+            key={screen.screenId}
             automirror
-            sessionId={id}
+            sessionId={screen.session_id}
           />
-        );
-      })}
-      {participantIds.map((id) => {
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-
-        return (
-          <DailyVideo
-            // @ts-expect-error will be fixed in the next release
-            type="customTrack"
-            key={id + "-iframeTrack"}
-            automirror
-            sessionId={id}
-          />
-        );
-      })}
+        ))}
+      </div>
+      <div className="participants">
+        {participantIds.map((id) => (
+          <DailyVideo type="video" key={id} automirror sessionId={id} />
+        ))}
+      </div>
       <DailyAudio />
       <MicVolumeVisualizer />
       <div id="meetingState">Meeting State: {meetingState}</div>
