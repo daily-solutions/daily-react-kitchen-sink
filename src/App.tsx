@@ -384,25 +384,30 @@ export default function App() {
     const cropAPI = (window as unknown as { CropTarget?: CropTargetAPI })
       .CropTarget;
     if (!cropAPI?.fromElement) return;
-
-    void (async () => {
-      try {
-        const cropTarget = await cropAPI.fromElement(iframeRef.current!);
+    cropAPI
+      .fromElement(iframeRef.current)
+      .then((cropTarget) => {
         interface CroppableTrack extends MediaStreamTrack {
           cropTo?: (target: CropTarget) => Promise<void>;
         }
         const croppable = track as CroppableTrack;
-        if (typeof croppable.cropTo === "function") {
-          await croppable.cropTo(cropTarget);
-          hasCroppedRef.current = true;
-          console.log("Cropped screen share to iframe via useMediaTrack");
-        } else {
+        if (typeof croppable.cropTo !== "function") {
           console.warn("cropTo not implemented on this MediaStreamTrack");
+          return;
         }
-      } catch (e) {
+        return croppable
+          .cropTo(cropTarget)
+          .then(() => {
+            hasCroppedRef.current = true;
+            console.log("Cropped screen share to iframe via useMediaTrack");
+          })
+          .catch((err) => {
+            console.error("cropTo failed", err);
+          });
+      })
+      .catch((e) => {
         console.error("Failed to crop screen share", e);
-      }
-    })();
+      });
   }, [isSharingScreen, localScreenVideoTrack]);
 
   const load = useCallback(() => {
