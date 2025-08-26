@@ -1,10 +1,9 @@
+import { fileURLToPath } from "url";
+
 // Configuration - replace with your actual Daily.co API keys
 const DAILY_API_KEYS = [
-  process.env.DAILY_API_KEY_1,
-  process.env.DAILY_API_KEY_2,
-  process.env.DAILY_API_KEY_3,
-  // Add more API keys as needed
-].filter(Boolean) as string[]; // Remove undefined values
+  "85b91cd4294da414f74ce8329b5953f836d078b68d8bb718876bccb337ff3f97",
+].filter(Boolean); // Remove undefined values
 
 // Fallback for single API key (backwards compatibility)
 if (DAILY_API_KEYS.length === 0 && process.env.DAILY_API_KEY) {
@@ -31,6 +30,17 @@ interface RecordingsResponse {
  */
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+/**
+ * Utility function to create chunks from an array
+ */
+function chunkArray<T>(array: T[], chunkSize: number): T[][] {
+  const chunks: T[][] = [];
+  for (let i = 0; i < array.length; i += chunkSize) {
+    chunks.push(array.slice(i, i + chunkSize));
+  }
+  return chunks;
 }
 
 /**
@@ -224,7 +234,7 @@ async function getRecordings(
 }
 
 /**
- * Delete all recordings for a specific API key
+ * Delete all recordings for a specific API key with parallel processing
  */
 async function deleteRecordingsForApiKey(
   apiKey: string,
@@ -248,42 +258,71 @@ async function deleteRecordingsForApiKey(
       }`
     );
 
+    // Process recordings in parallel batches to avoid overwhelming the API
+    const batchSize = 5; // Number of parallel deletions per batch
+    const batches = chunkArray(recordings, batchSize);
+
     let successCount = 0;
     let failureCount = 0;
+    let processedCount = 0;
 
-    // Delete each recording with progress tracking
-    for (let i = 0; i < recordings.length; i++) {
-      const recording = recordings[i];
-      const progress = `(${i + 1}/${recordings.length})`;
+    console.log(
+      `🚀 Processing ${batches.length} batches of ${batchSize} deletions each...`
+    );
+
+    // Process each batch in parallel
+    for (let batchIndex = 0; batchIndex < batches.length; batchIndex++) {
+      const batch = batches[batchIndex];
+      const batchNumber = batchIndex + 1;
 
       console.log(
-        `🗑️  ${progress} Deleting recording: ${recording.id} (room: ${recording.room_name})`
+        `\n📦 Processing batch ${batchNumber}/${batches.length} (${batch.length} recordings)...`
       );
 
-      const success = await deleteRecording(recording.id, apiKey);
-
-      if (success) {
-        successCount++;
-      } else {
-        failureCount++;
-      }
-
-      // Show progress every 10 deletions for large batches
-      if ((i + 1) % 10 === 0 || i === recordings.length - 1) {
+      // Delete all recordings in this batch in parallel
+      const batchPromises = batch.map(async (recording, recordingIndex) => {
+        const globalIndex = batchIndex * batchSize + recordingIndex + 1;
         console.log(
-          `📈 Progress: ${successCount} deleted, ${failureCount} failed (${
-            i + 1
-          }/${recordings.length} processed)`
+          `🗑️  [${globalIndex}/${recordings.length}] Deleting: ${recording.id} (room: ${recording.room_name})`
         );
-      }
 
-      // Add a small delay to avoid overwhelming the API
-      await new Promise((resolve) => setTimeout(resolve, 250));
+        const success = await deleteRecording(recording.id, apiKey);
+        return { success, recording };
+      });
+
+      // Wait for all deletions in this batch to complete
+      const batchResults = await Promise.all(batchPromises);
+
+      // Count results from this batch
+      const batchSuccess = batchResults.filter((r) => r.success).length;
+      const batchFailure = batchResults.filter((r) => !r.success).length;
+
+      successCount += batchSuccess;
+      failureCount += batchFailure;
+      processedCount += batch.length;
+
+      console.log(
+        `✅ Batch ${batchNumber} complete: ${batchSuccess} succeeded, ${batchFailure} failed`
+      );
+      console.log(
+        `📈 Overall progress: ${processedCount}/${recordings.length} processed (${successCount} succeeded, ${failureCount} failed)`
+      );
+
+      // Add a delay between batches to be respectful to the API
+      if (batchIndex < batches.length - 1) {
+        console.log("⏳ Waiting before next batch...");
+        await sleep(500); // 500ms delay between batches
+      }
     }
 
-    console.log(`\n📈 API Key ${keyIndex + 1} Summary:`);
+    console.log(`\n📈 API Key ${keyIndex + 1} Final Summary:`);
     console.log(`✅ Successfully deleted: ${successCount} recordings`);
     console.log(`❌ Failed to delete: ${failureCount} recordings`);
+    console.log(
+      `📊 Success rate: ${((successCount / recordings.length) * 100).toFixed(
+        1
+      )}%`
+    );
 
     return { success: successCount, failure: failureCount };
   } catch (error) {
@@ -366,6 +405,9 @@ export {
 };
 
 // Run the deletion script if this file is executed directly
-if (import.meta.url === `file://${process.argv[1]}`) {
+// For ES modules, we need to check if the file path matches
+const __filename = fileURLToPath(import.meta.url);
+
+if (process.argv[1] === __filename) {
   main().catch(console.error);
 }
