@@ -1,5 +1,16 @@
-// Configuration - replace with your actual Daily.co API key
-const DAILY_API_KEY = process.env.DAILY_API_KEY ?? "your-api-key-here";
+// Configuration - replace with your actual Daily.co API keys
+const DAILY_API_KEYS = [
+  process.env.DAILY_API_KEY_1,
+  process.env.DAILY_API_KEY_2,
+  process.env.DAILY_API_KEY_3,
+  // Add more API keys as needed
+].filter(Boolean) as string[]; // Remove undefined values
+
+// Fallback for single API key (backwards compatibility)
+if (DAILY_API_KEYS.length === 0 && process.env.DAILY_API_KEY) {
+  DAILY_API_KEYS.push(process.env.DAILY_API_KEY);
+}
+
 const DAILY_API_BASE = "https://api.daily.co/v1";
 
 interface Recording {
@@ -77,7 +88,10 @@ async function retryWithBackoff<T>(
 /**
  * Delete a specific recording by ID using Daily.co REST API
  */
-async function deleteRecording(recordingId: string): Promise<boolean> {
+async function deleteRecording(
+  recordingId: string,
+  apiKey: string
+): Promise<boolean> {
   try {
     return await retryWithBackoff(async () => {
       const response = await fetch(
@@ -85,7 +99,7 @@ async function deleteRecording(recordingId: string): Promise<boolean> {
         {
           method: "DELETE",
           headers: {
-            Authorization: `Bearer ${DAILY_API_KEY}`,
+            Authorization: `Bearer ${apiKey}`,
             "Content-Type": "application/json",
           },
         }
@@ -124,7 +138,10 @@ async function deleteRecording(recordingId: string): Promise<boolean> {
 /**
  * Get all recordings using Daily.co REST API
  */
-async function getRecordings(limit = 100): Promise<Recording[]> {
+async function getRecordings(
+  apiKey: string,
+  limit = 100
+): Promise<Recording[]> {
   try {
     return await retryWithBackoff(async () => {
       const response = await fetch(
@@ -132,7 +149,7 @@ async function getRecordings(limit = 100): Promise<Recording[]> {
         {
           method: "GET",
           headers: {
-            Authorization: `Bearer ${DAILY_API_KEY}`,
+            Authorization: `Bearer ${apiKey}`,
             "Content-Type": "application/json",
           },
         }
@@ -166,27 +183,29 @@ async function getRecordings(limit = 100): Promise<Recording[]> {
 }
 
 /**
- * Delete all recordings
+ * Delete all recordings for a specific API key
  */
-async function main(): Promise<void> {
-  console.log("🚀 Starting recording deletion process...");
-
-  if (!DAILY_API_KEY || DAILY_API_KEY === "your-api-key-here") {
-    console.error(
-      "❌ Please set your DAILY_API_KEY environment variable or update the script"
-    );
-    return;
-  }
+async function deleteRecordingsForApiKey(
+  apiKey: string,
+  keyIndex: number
+): Promise<{ success: number; failure: number }> {
+  console.log(
+    `\n🔑 Processing API key ${keyIndex + 1}/${DAILY_API_KEYS.length}...`
+  );
 
   try {
-    const recordings = await getRecordings();
+    const recordings = await getRecordings(apiKey);
 
     if (recordings.length === 0) {
-      console.log("✨ No recordings found to delete");
-      return;
+      console.log(`✨ No recordings found for API key ${keyIndex + 1}`);
+      return { success: 0, failure: 0 };
     }
 
-    console.log(`📊 Found ${recordings.length} recordings to delete`);
+    console.log(
+      `📊 Found ${recordings.length} recordings to delete for API key ${
+        keyIndex + 1
+      }`
+    );
 
     let successCount = 0;
     let failureCount = 0;
@@ -196,7 +215,7 @@ async function main(): Promise<void> {
       console.log(
         `🗑️  Deleting recording: ${recording.id} (room: ${recording.room_name})`
       );
-      const success = await deleteRecording(recording.id);
+      const success = await deleteRecording(recording.id, apiKey);
 
       if (success) {
         successCount++;
@@ -208,30 +227,89 @@ async function main(): Promise<void> {
       await new Promise((resolve) => setTimeout(resolve, 250));
     }
 
-    console.log("\n📈 Deletion Summary:");
+    console.log(`\n📈 API Key ${keyIndex + 1} Summary:`);
     console.log(`✅ Successfully deleted: ${successCount} recordings`);
     console.log(`❌ Failed to delete: ${failureCount} recordings`);
-    console.log("🎉 Finished deleting recordings");
+
+    return { success: successCount, failure: failureCount };
   } catch (error) {
-    console.error("❌ Error in deleteAllRecordings:", error);
+    console.error(`❌ Error processing API key ${keyIndex + 1}:`, error);
+    return { success: 0, failure: 0 };
   }
 }
 
 /**
- * Delete a single recording by ID
+ * Delete all recordings across all API keys
  */
-async function deleteSingleRecording(recordingId: string): Promise<void> {
-  console.log(`🗑️  Deleting single recording: ${recordingId}`);
+async function main(): Promise<void> {
+  console.log("🚀 Starting recording deletion process...");
 
-  if (!DAILY_API_KEY || DAILY_API_KEY === "your-api-key-here") {
+  if (DAILY_API_KEYS.length === 0) {
     console.error(
-      "❌ Please set your DAILY_API_KEY environment variable or update the script"
+      "❌ Please set your DAILY_API_KEY environment variables (DAILY_API_KEY_1, DAILY_API_KEY_2, etc.) or DAILY_API_KEY"
     );
     return;
   }
 
-  await deleteRecording(recordingId);
+  console.log(`🔑 Found ${DAILY_API_KEYS.length} API key(s) to process`);
+
+  let totalSuccess = 0;
+  let totalFailure = 0;
+
+  // Process each API key
+  for (let i = 0; i < DAILY_API_KEYS.length; i++) {
+    const apiKey = DAILY_API_KEYS[i];
+    if (!apiKey) continue;
+
+    const result = await deleteRecordingsForApiKey(apiKey, i);
+    totalSuccess += result.success;
+    totalFailure += result.failure;
+
+    // Add a delay between API keys to be respectful
+    if (i < DAILY_API_KEYS.length - 1) {
+      console.log("⏳ Waiting before processing next API key...");
+      await new Promise((resolve) => setTimeout(resolve, 1000));
+    }
+  }
+
+  console.log("\n🎉 Final Summary Across All API Keys:");
+  console.log(`✅ Total successfully deleted: ${totalSuccess} recordings`);
+  console.log(`❌ Total failed to delete: ${totalFailure} recordings`);
+  console.log("🏁 Finished deleting recordings from all accounts");
 }
+
+/**
+ * Delete a single recording by ID using the first available API key
+ */
+async function deleteSingleRecording(
+  recordingId: string,
+  apiKeyIndex = 0
+): Promise<void> {
+  console.log(`🗑️  Deleting single recording: ${recordingId}`);
+
+  if (DAILY_API_KEYS.length === 0) {
+    console.error(
+      "❌ Please set your DAILY_API_KEY environment variables or update the script"
+    );
+    return;
+  }
+
+  const apiKey = DAILY_API_KEYS[apiKeyIndex];
+  if (!apiKey) {
+    console.error(`❌ API key at index ${apiKeyIndex} is not available`);
+    return;
+  }
+
+  await deleteRecording(recordingId, apiKey);
+}
+
+// Export functions for use in other modules
+export {
+  deleteRecording,
+  getRecordings,
+  deleteRecordingsForApiKey,
+  deleteSingleRecording,
+};
 
 // Run the deletion script if this file is executed directly
 if (import.meta.url === `file://${process.argv[1]}`) {
