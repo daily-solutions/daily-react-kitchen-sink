@@ -567,7 +567,14 @@ export default function App() {
         <br />
         <button onClick={stopCamera}>Camera Off</button>
         <button onClick={updateCameraOn}>Camera On</button> <br />
-        <button disabled={isRecording} onClick={() => startRecording()}>
+        <button
+          disabled={isRecording}
+          onClick={() =>
+            startRecording({
+              type: "raw-tracks",
+            })
+          }
+        >
           Start Recording
         </button>
         <button disabled={!isRecording} onClick={() => stopRecording()}>
