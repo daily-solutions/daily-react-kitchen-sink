@@ -22,27 +22,14 @@ interface RecordingReadyPayload {
   tracks?: unknown[];
 }
 
-interface RecordingErrorPayload {
-  action: string;
-  error_msg: string;
-  instance_id: string;
-  room_name: string;
-  timestamp: number;
-}
-
 interface RecordingReadyWebhook extends DailyWebhookBase {
   type: "recording.ready-to-download";
   payload: RecordingReadyPayload;
 }
 
-interface RecordingErrorWebhook extends DailyWebhookBase {
-  type: "recording.error";
-  payload: RecordingErrorPayload;
-}
-
 /**
  * Simple Express server to handle Daily recording webhooks
- * This server listens for recording-ready-to-download and recording-error events
+ * This server listens for recording-ready-to-download events
  */
 
 const app = express();
@@ -80,30 +67,6 @@ app.post("/webhooks/recording-ready", (req, res) => {
   console.log("Max Participants:", webhook.payload?.max_participants);
   console.log("Full payload:", JSON.stringify(req.body, null, 2));
   console.log("================================================\n");
-});
-
-/**
- * Webhook endpoint for recording.error events
- * According to Daily docs, this event is sent when an error occurs
- * during recording or before a recording can be started
- */
-app.post("/webhooks/recording-error", (req, res) => {
-  // Respond immediately with 200 status as recommended by Daily docs
-  res.status(200).json({ received: true });
-
-  const webhook = req.body as RecordingErrorWebhook;
-
-  console.log("\n❌ RECORDING ERROR WEBHOOK RECEIVED");
-  console.log("===================================");
-  console.log("Timestamp:", new Date().toISOString());
-  console.log("Event Type:", webhook.type);
-  console.log("Event ID:", webhook.id);
-  console.log("Action:", webhook.payload?.action);
-  console.log("Error Message:", webhook.payload?.error_msg);
-  console.log("Room Name:", webhook.payload?.room_name);
-  console.log("Instance ID:", webhook.payload?.instance_id);
-  console.log("Full payload:", JSON.stringify(req.body, null, 2));
-  console.log("===================================\n");
 });
 
 /**
@@ -165,9 +128,6 @@ function startWebhookServer() {
     console.log("Webhook endpoints:");
     console.log(
       `  📥 Recording Ready: http://localhost:${PORT}/webhooks/recording-ready`
-    );
-    console.log(
-      `  ❌ Recording Error:  http://localhost:${PORT}/webhooks/recording-error`
     );
     console.log(`  🔍 Test/Verify:     http://localhost:${PORT}/webhooks/test`);
     console.log(`  ❤️  Health Check:    http://localhost:${PORT}/health`);

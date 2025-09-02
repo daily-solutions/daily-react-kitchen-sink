@@ -13,7 +13,6 @@ This project now includes a **Daily Recording Webhooks Demo** that demonstrates 
 ### Webhook Endpoints
 
 - `POST /webhooks/recording-ready` - Handles `recording.ready-to-download` events
-- `POST /webhooks/recording-error` - Handles `recording.error` events  
 - `POST /webhooks/test` - General webhook verification endpoint
 - `GET /health` - Health check endpoint
 
@@ -28,7 +27,7 @@ This project now includes a **Daily Recording Webhooks Demo** that demonstrates 
 ### Webhook Configuration Scripts
 
 - `configure-webhook-single.sh` - Set up webhook for recording-ready events only
-- `test-webhooks.sh` - Set up separate webhooks for each event type
+- `test-webhooks.sh` - Set up webhook for recording-ready events
 
 For detailed webhook setup instructions, see [WEBHOOK_DEMO.md](./WEBHOOK_DEMO.md)
 

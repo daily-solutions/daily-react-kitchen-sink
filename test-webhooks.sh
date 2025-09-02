@@ -7,7 +7,6 @@
 DAILY_API_BASE="https://api.daily.co/v1"
 WEBHOOK_URL="https://hush.ngrok.io"
 RECORDING_READY_PATH="/webhooks/recording-ready"
-RECORDING_ERROR_PATH="/webhooks/recording-error"
 
 # Check if DAILY_API_KEY is set
 if [ -z "$DAILY_API_KEY" ]; then
@@ -77,36 +76,8 @@ else
 fi
 echo ""
 
-# Step 3: Update webhook for recording-error events
-echo "3. Updating webhook for recording-error events..."
-echo "POST $DAILY_API_BASE/webhooks/$WEBHOOK_UUID"
-echo "URL: $WEBHOOK_URL$RECORDING_ERROR_PATH"
-
-RECORDING_ERROR_RESPONSE=$(curl -s \
-    -H "Content-Type: application/json" \
-    -H "Authorization: Bearer $DAILY_API_KEY" \
-    -X POST \
-    "$DAILY_API_BASE/webhooks/$WEBHOOK_UUID" \
-    -d "{
-        \"url\": \"$WEBHOOK_URL$RECORDING_ERROR_PATH\",
-        \"eventTypes\": [\"recording.error\"]
-    }")
-
-echo "Response:"
-echo "$RECORDING_ERROR_RESPONSE" | jq '.' 2>/dev/null || echo "$RECORDING_ERROR_RESPONSE"
-echo ""
-
-# Check if the update was successful
-if echo "$RECORDING_ERROR_RESPONSE" | jq -e '.uuid' >/dev/null 2>&1; then
-    echo "✅ Successfully updated webhook for recording-error events"
-else
-    echo "❌ Failed to update webhook for recording-error events"
-    echo "Response: $RECORDING_ERROR_RESPONSE"
-fi
-echo ""
-
-# Step 4: Verify final webhook configuration
-echo "4. Verifying final webhook configuration..."
+# Step 3: Verify final webhook configuration
+echo "3. Verifying final webhook configuration..."
 echo "GET $DAILY_API_BASE/webhooks"
 
 FINAL_WEBHOOKS_RESPONSE=$(curl -s \
@@ -124,8 +95,7 @@ echo ""
 echo "📝 Next steps:"
 echo "1. Start a recording in your Daily room"
 echo "2. Check the console output where you ran 'npm run dev'"
-echo "3. You should see webhook events logged when recording starts/stops"
+echo "3. You should see webhook events logged when recording finishes"
 echo ""
-echo "🔗 Your webhook endpoints:"
+echo "🔗 Your webhook endpoint:"
 echo "  📥 Recording Ready: $WEBHOOK_URL$RECORDING_READY_PATH"
-echo "  ❌ Recording Error:  $WEBHOOK_URL$RECORDING_ERROR_PATH"

@@ -2,7 +2,6 @@
 
 This demo demonstrates how to set up and handle Daily's recording webhooks, specifically:
 - `recording.ready-to-download` - fired when a recording is finished and ready for download
-- `recording.error` - fired when an error occurs during recording
 
 ## Quick Start
 
@@ -59,7 +58,6 @@ Use `test-webhooks.sh` to set up separate webhooks for each event type:
 The webhook server provides the following endpoints:
 
 - `http://localhost:4000/webhooks/recording-ready` - Handle recording ready events
-- `http://localhost:4000/webhooks/recording-error` - Handle recording error events  
 - `http://localhost:4000/webhooks/test` - **Daily webhook verification endpoint**
 - `http://localhost:4000/health` - Health check endpoint
 
@@ -115,16 +113,6 @@ curl -X POST 'https://api.daily.co/v1/webhooks' \
   }'
 ```
 
-```bash
-curl -X POST 'https://api.daily.co/v1/webhooks' \
-  -H 'Authorization: Bearer YOUR_API_KEY' \
-  -H 'Content-Type: application/json' \
-  -d '{
-    "url": "http://your-public-domain.com:4000/webhooks/recording-error", 
-    "events": ["recording.error"]
-  }'
-```
-
 ## Testing Webhooks Locally
 
 For local testing, you can use tools like:
@@ -161,25 +149,7 @@ ngrok http 4000
 }
 ```
 
-### recording.error
-```json
-{
-  "version": "1.0.0", 
-  "type": "recording.error",
-  "id": "rec-err-abc123-def456",
-  "payload": {
-    "action": "cloud-recording-err",
-    "error_msg": "Recording failed due to insufficient storage",
-    "instance_id": "recording-instance-123",
-    "room_name": "test-room",
-    "timestamp": 1692124192
-  },
-  "event_ts": 1692124192
-}
-```
-
 ## Documentation References
 
 - [Daily Webhooks Overview](https://docs.daily.co/reference/rest-api/webhooks)
 - [Recording Ready to Download Event](https://docs.daily.co/reference/rest-api/webhooks/events/recording-ready-to-download)
-- [Recording Error Event](https://docs.daily.co/reference/rest-api/webhooks/events/recording-error)
