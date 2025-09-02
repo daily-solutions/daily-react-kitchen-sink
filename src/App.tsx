@@ -1,4 +1,4 @@
-import React, { useCallback, useRef, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import Daily, {
   DailyEventObject,
   DailyEventObjectParticipant,
@@ -72,6 +72,8 @@ export default function App() {
   const [enableBackgroundClicked, setEnableBackgroundClicked] = useState(false);
   const [dailyRoomUrl, setDailyRoomUrl] = useState("");
   const [dailyMeetingToken, setDailyMeetingToken] = useState("");
+  const [audioProcessingDisabledForCPU, setAudioProcessingDisabledForCPU] =
+    useState(false);
 
   const {
     cameraError,
@@ -158,6 +160,37 @@ export default function App() {
     onCPULoadChange: logEvent,
   });
 
+  // Monitor CPU load and disable audio processing when high
+  useEffect(() => {
+    if (!callObject || !updateInputSettings) {
+      return;
+    }
+
+    // If CPU load is high and audio processing is not already disabled for CPU reasons
+    if (cpuLoad.state === "high" && !audioProcessingDisabledForCPU) {
+      console.log("High CPU load detected, disabling audio processing");
+
+      updateInputSettings({
+        audio: {
+          processor: {
+            type: "none",
+          },
+        },
+      })
+        ?.then(() => {
+          setAudioProcessingDisabledForCPU(true);
+        })
+        .catch((err) => {
+          console.error("Error disabling audio processing for high CPU:", err);
+        });
+    }
+  }, [
+    cpuLoad.state,
+    audioProcessingDisabledForCPU,
+    callObject,
+    updateInputSettings,
+  ]);
+
   const { startRecording, stopRecording, isRecording } = useRecording({
     onRecordingData: logEvent,
     onRecordingError: logEvent,
@@ -235,16 +268,40 @@ export default function App() {
       return;
     }
 
+    // Prevent enabling noise cancellation when CPU load is high
+    if (!noiseCancellationEnabled && cpuLoad.state === "high") {
+      console.warn("Cannot enable audio processing: CPU load is high");
+      alert(
+        "Cannot enable audio processing while CPU load is high. Please wait for CPU load to decrease."
+      );
+      return;
+    }
+
+    const newType = noiseCancellationEnabled ? "none" : "noise-cancellation";
+
     updateInputSettings({
       audio: {
         processor: {
-          type: noiseCancellationEnabled ? "none" : "noise-cancellation",
+          type: newType,
         },
       },
-    })?.catch((err) => {
-      console.error("Error enabling Krisp", err);
-    });
-  }, [callObject, noiseCancellationEnabled, updateInputSettings]);
+    })
+      ?.then(() => {
+        // If we're manually disabling or enabling, clear the CPU-related state
+        if (audioProcessingDisabledForCPU) {
+          setAudioProcessingDisabledForCPU(false);
+        }
+      })
+      .catch((err) => {
+        console.error("Error toggling Krisp", err);
+      });
+  }, [
+    callObject,
+    noiseCancellationEnabled,
+    updateInputSettings,
+    cpuLoad.state,
+    audioProcessingDisabledForCPU,
+  ]);
 
   const rmpParticipantIds = useParticipantIds({
     sort: "joined_at",
@@ -551,6 +608,12 @@ export default function App() {
         >
           Toggle Krisp
         </button>
+        {audioProcessingDisabledForCPU && (
+          <span>⚠️ Audio processing disabled due to high CPU load</span>
+        )}
+        {cpuLoad.state === "high" && !audioProcessingDisabledForCPU && (
+          <span>🔥 High CPU load detected</span>
+        )}
         <br />
         <button
           disabled={isSharingScreen}
