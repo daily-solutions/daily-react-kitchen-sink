@@ -22,7 +22,13 @@ This project now includes a **Daily Recording Webhooks Demo** that demonstrates 
 1. Install dependencies: `npm install`
 2. Start the demo: `npm run dev` 
 3. Open http://localhost:3000 in your browser
-4. Join a Daily room and start a recording to see webhook events logged in the console
+4. **For real webhooks**: Set up ngrok, configure your Daily API key, and run `./configure-webhook-single.sh`
+5. Join a Daily room and start a recording to see webhook events logged in the console
+
+### Webhook Configuration Scripts
+
+- `configure-webhook-single.sh` - Set up webhook for recording-ready events only
+- `test-webhooks.sh` - Set up separate webhooks for each event type
 
 For detailed webhook setup instructions, see [WEBHOOK_DEMO.md](./WEBHOOK_DEMO.md)
 

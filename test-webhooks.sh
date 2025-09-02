@@ -1,70 +1,131 @@
 #!/bin/bash
 
-echo "Testing Daily Recording Webhook Server"
-echo "======================================"
+# Daily API Webhook Configuration Script
+# This script gets existing webhooks and updates them to use the ngrok URL
 
-echo ""
-echo "1. Testing health endpoint..."
-echo "GET http://localhost:4000/health"
-curl -s http://localhost:4000/health
-echo ""
-echo ""
+# Configuration
+DAILY_API_BASE="https://api.daily.co/v1"
+WEBHOOK_URL="https://hush.ngrok.io"
+RECORDING_READY_PATH="/webhooks/recording-ready"
+RECORDING_ERROR_PATH="/webhooks/recording-error"
 
-echo "2. Testing recording ready webhook..."
-echo "POST http://localhost:4000/webhooks/recording-ready"
-curl -s -X POST http://localhost:4000/webhooks/recording-ready \
-  -H "Content-Type: application/json" \
-  -d '{
-    "version": "1.0.0",
-    "type": "recording.ready-to-download", 
-    "id": "rec-rtd-test-123",
-    "payload": {
-      "recording_id": "test-recording-123",
-      "room_name": "test-room",
-      "start_ts": 1692124183,
-      "status": "finished",
-      "max_participants": 2,
-      "duration": 120,
-      "s3_key": "test-bucket/test-room/1692124183028"
-    },
-    "event_ts": 1692124192
-  }'
-echo ""
+# Check if DAILY_API_KEY is set
+if [ -z "$DAILY_API_KEY" ]; then
+    echo "❌ Error: DAILY_API_KEY environment variable is not set"
+    echo "Please set your Daily API key:"
+    echo "export DAILY_API_KEY=your_api_key_here"
+    exit 1
+fi
+
+echo "🎣 Daily Recording Webhook Configuration"
+echo "======================================="
+echo "Webhook Base URL: $WEBHOOK_URL"
+echo "API Endpoint: $DAILY_API_BASE"
 echo ""
 
-echo "3. Testing recording error webhook..."
-echo "POST http://localhost:4000/webhooks/recording-error"
-curl -s -X POST http://localhost:4000/webhooks/recording-error \
-  -H "Content-Type: application/json" \
-  -d '{
-    "version": "1.0.0",
-    "type": "recording.error",
-    "id": "rec-err-test-456", 
-    "payload": {
-      "action": "cloud-recording-err",
-      "error_msg": "Test error message",
-      "instance_id": "test-instance-456",
-      "room_name": "test-room",
-      "timestamp": 1692124192
-    },
-    "event_ts": 1692124192
-  }'
-echo ""
+# Step 1: Get existing webhooks
+echo "1. Getting list of existing webhooks..."
+echo "GET $DAILY_API_BASE/webhooks"
+
+WEBHOOKS_RESPONSE=$(curl -s \
+    -H "Content-Type: application/json" \
+    -H "Authorization: Bearer $DAILY_API_KEY" \
+    -X GET \
+    "$DAILY_API_BASE/webhooks")
+
+echo "Response:"
+echo "$WEBHOOKS_RESPONSE" | jq '.' 2>/dev/null || echo "$WEBHOOKS_RESPONSE"
 echo ""
 
-echo "4. Testing Daily webhook verification endpoint..."
-echo "POST http://localhost:4000/webhooks/test"
-echo "This simulates Daily's verification request when creating a webhook"
-curl -s -X POST http://localhost:4000/webhooks/test \
-  -H "Content-Type: application/json" \
-  -H "X-Webhook-Signature: test-signature-123" \
-  -H "X-Webhook-Timestamp: $(date +%s)" \
-  -d '{
-    "test": "Daily webhook verification",
-    "verification": true,
-    "timestamp": "'$(date -u +%Y-%m-%dT%H:%M:%SZ)'"
-  }'
-echo ""
+# Extract webhook UUID from response
+WEBHOOK_UUID=$(echo "$WEBHOOKS_RESPONSE" | jq -r '.[] | .uuid' 2>/dev/null)
+
+if [ -z "$WEBHOOK_UUID" ] || [ "$WEBHOOK_UUID" = "null" ]; then
+    echo "❌ No existing webhook found or failed to parse response"
+    echo "You may need to create a webhook first using the Daily dashboard or API"
+    exit 1
+fi
+
+echo "✅ Found webhook with UUID: $WEBHOOK_UUID"
 echo ""
 
-echo "Testing complete!"
+# Step 2: Update webhook for recording-ready events
+echo "2. Updating webhook for recording-ready events..."
+echo "POST $DAILY_API_BASE/webhooks/$WEBHOOK_UUID"
+echo "URL: $WEBHOOK_URL$RECORDING_READY_PATH"
+
+RECORDING_READY_RESPONSE=$(curl -s \
+    -H "Content-Type: application/json" \
+    -H "Authorization: Bearer $DAILY_API_KEY" \
+    -X POST \
+    "$DAILY_API_BASE/webhooks/$WEBHOOK_UUID" \
+    -d "{
+        \"url\": \"$WEBHOOK_URL$RECORDING_READY_PATH\",
+        \"eventTypes\": [\"recording.ready-to-download\"]
+    }")
+
+echo "Response:"
+echo "$RECORDING_READY_RESPONSE" | jq '.' 2>/dev/null || echo "$RECORDING_READY_RESPONSE"
+echo ""
+
+# Check if the update was successful
+if echo "$RECORDING_READY_RESPONSE" | jq -e '.uuid' >/dev/null 2>&1; then
+    echo "✅ Successfully updated webhook for recording-ready events"
+else
+    echo "❌ Failed to update webhook for recording-ready events"
+    echo "Response: $RECORDING_READY_RESPONSE"
+fi
+echo ""
+
+# Step 3: Update webhook for recording-error events
+echo "3. Updating webhook for recording-error events..."
+echo "POST $DAILY_API_BASE/webhooks/$WEBHOOK_UUID"
+echo "URL: $WEBHOOK_URL$RECORDING_ERROR_PATH"
+
+RECORDING_ERROR_RESPONSE=$(curl -s \
+    -H "Content-Type: application/json" \
+    -H "Authorization: Bearer $DAILY_API_KEY" \
+    -X POST \
+    "$DAILY_API_BASE/webhooks/$WEBHOOK_UUID" \
+    -d "{
+        \"url\": \"$WEBHOOK_URL$RECORDING_ERROR_PATH\",
+        \"eventTypes\": [\"recording.error\"]
+    }")
+
+echo "Response:"
+echo "$RECORDING_ERROR_RESPONSE" | jq '.' 2>/dev/null || echo "$RECORDING_ERROR_RESPONSE"
+echo ""
+
+# Check if the update was successful
+if echo "$RECORDING_ERROR_RESPONSE" | jq -e '.uuid' >/dev/null 2>&1; then
+    echo "✅ Successfully updated webhook for recording-error events"
+else
+    echo "❌ Failed to update webhook for recording-error events"
+    echo "Response: $RECORDING_ERROR_RESPONSE"
+fi
+echo ""
+
+# Step 4: Verify final webhook configuration
+echo "4. Verifying final webhook configuration..."
+echo "GET $DAILY_API_BASE/webhooks"
+
+FINAL_WEBHOOKS_RESPONSE=$(curl -s \
+    -H "Content-Type: application/json" \
+    -H "Authorization: Bearer $DAILY_API_KEY" \
+    -X GET \
+    "$DAILY_API_BASE/webhooks")
+
+echo "Final webhook configuration:"
+echo "$FINAL_WEBHOOKS_RESPONSE" | jq '.' 2>/dev/null || echo "$FINAL_WEBHOOKS_RESPONSE"
+echo ""
+
+echo "🎉 Webhook configuration complete!"
+echo ""
+echo "📝 Next steps:"
+echo "1. Start a recording in your Daily room"
+echo "2. Check the console output where you ran 'npm run dev'"
+echo "3. You should see webhook events logged when recording starts/stops"
+echo ""
+echo "🔗 Your webhook endpoints:"
+echo "  📥 Recording Ready: $WEBHOOK_URL$RECORDING_READY_PATH"
+echo "  ❌ Recording Error:  $WEBHOOK_URL$RECORDING_ERROR_PATH"
