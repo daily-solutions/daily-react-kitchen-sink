@@ -62,7 +62,7 @@ UPDATE_RESPONSE=$(curl -s \
     "$DAILY_API_BASE/webhooks/$WEBHOOK_UUID" \
     -d "{
         \"url\": \"$WEBHOOK_URL$WEBHOOK_PATH\",
-        \"eventTypes\": [\"recording.ready-to-download\"]
+        \"eventTypes\": [\"recording.ready-to-download\", \"meeting.ended\"]
     }")
 
 echo "Response:"
