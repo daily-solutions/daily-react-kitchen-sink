@@ -59,6 +59,13 @@ app.get("/health", (_req, res) => {
 
 // Catch-all webhook endpoint for debugging
 app.post("/webhooks/*", (req, res) => {
+  if (!process.env.DAILY_API_KEY) {
+    console.error("ℹ️  DAILY_API_KEY not set - skipping webhook processing");
+    return res
+      .status(400)
+      .json({ error: "Set DAILY_API_KEY environment variable" });
+  }
+
   // Use an async IIFE to handle the async operations
   (async () => {
     console.log("\n📥 WEBHOOK RECEIVED");
@@ -86,9 +93,61 @@ app.post("/webhooks/*", (req, res) => {
         "(" + startTime.toISOString() + ")"
       );
 
+      // Check room presence to see if total_count equals 1
+      const roomName = webhook.payload.room_name;
+      if (roomName && process.env.DAILY_API_KEY) {
+        try {
+          const response = await fetch(
+            `https://api.daily.co/v1/rooms/${encodeURIComponent(
+              roomName
+            )}/presence`,
+            {
+              method: "GET",
+              headers: {
+                Authorization: `Bearer ${process.env.DAILY_API_KEY}`,
+                "Content-Type": "application/json",
+              },
+            }
+          );
+
+          if (response.ok) {
+            const presenceData: unknown = await response.json();
+            const presenceObj = presenceData as { total_count?: number };
+            const totalCount = presenceObj.total_count ?? 0;
+            console.log("👥 Room Presence Info:");
+            console.log("Total participants:", totalCount);
+
+            if (totalCount > 0) {
+              console.log(
+                `✅ Total count is ${totalCount} - at least one participant in room, do not process recordings.`
+              );
+            } else {
+              console.log(
+                `ℹ️  Total count is ${totalCount}, process recording`
+              );
+            }
+
+            console.log(
+              "Full presence data:",
+              JSON.stringify(presenceData, null, 2)
+            );
+          } else {
+            console.log(
+              "❌ Failed to fetch room presence:",
+              response.status,
+              response.statusText
+            );
+          }
+        } catch (error) {
+          console.log("❌ Error fetching room presence:", error);
+        }
+      } else if (!process.env.DAILY_API_KEY) {
+        console.log("ℹ️  DAILY_API_KEY not set - skipping room presence check");
+      }
+
       // Fetch recording information from Daily API
       const recordingId = webhook.payload.recording_id;
-      if (recordingId && process.env.DAILY_API_KEY) {
+      if (recordingId) {
         try {
           const response = await fetch(
             `https://api.daily.co/v1/recordings/${recordingId}`,
@@ -115,10 +174,6 @@ app.post("/webhooks/*", (req, res) => {
         } catch (error) {
           console.log("❌ Error fetching recording info:", error);
         }
-      } else if (!process.env.DAILY_API_KEY) {
-        console.log(
-          "ℹ️  DAILY_API_KEY not set - skipping recording info fetch"
-        );
       }
     } else if (webhook.type === "meeting.ended") {
       console.log("\n🏁 MEETING ENDED");
