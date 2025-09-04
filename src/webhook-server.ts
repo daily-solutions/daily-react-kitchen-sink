@@ -85,6 +85,8 @@ app.post("/webhooks/*", (req, res) => {
       console.log("S3 Key:", webhook.payload.s3_key);
       console.log("Max Participants:", webhook.payload.max_participants);
 
+      const room = webhook.payload.room_name;
+
       const startTs = webhook.payload.start_ts;
       const startTime = new Date(startTs * 1000);
       console.log(
@@ -93,14 +95,13 @@ app.post("/webhooks/*", (req, res) => {
         "(" + startTime.toISOString() + ")"
       );
 
-      // Check room presence to see if total_count equals 1
-      const roomName = webhook.payload.room_name;
-      if (roomName && process.env.DAILY_API_KEY) {
+      // Fetch recordings for this room from Daily API
+      if (room && process.env.DAILY_API_KEY) {
         try {
           const response = await fetch(
-            `https://api.daily.co/v1/rooms/${encodeURIComponent(
-              roomName
-            )}/presence`,
+            `https://api.daily.co/v1/recordings?limit=1&room_name=${encodeURIComponent(
+              room
+            )}`,
             {
               method: "GET",
               headers: {
@@ -111,38 +112,21 @@ app.post("/webhooks/*", (req, res) => {
           );
 
           if (response.ok) {
-            const presenceData: unknown = await response.json();
-            const presenceObj = presenceData as { total_count?: number };
-            const totalCount = presenceObj.total_count ?? 0;
-            console.log("👥 Room Presence Info:");
-            console.log("Total participants:", totalCount);
-
-            if (totalCount > 0) {
-              console.log(
-                `✅ Total count is ${totalCount} - at least one participant in room, do not process recordings.`
-              );
-            } else {
-              console.log(
-                `ℹ️  Total count is ${totalCount}, process recording`
-              );
-            }
-
-            console.log(
-              "Full presence data:",
-              JSON.stringify(presenceData, null, 2)
-            );
+            const recordingsData: unknown = await response.json();
+            console.log("📋 Recordings for room from Daily API:");
+            console.log(JSON.stringify(recordingsData, null, 2));
           } else {
             console.log(
-              "❌ Failed to fetch room presence:",
+              "❌ Failed to fetch recordings:",
               response.status,
               response.statusText
             );
           }
         } catch (error) {
-          console.log("❌ Error fetching room presence:", error);
+          console.log("❌ Error fetching recordings:", error);
         }
       } else if (!process.env.DAILY_API_KEY) {
-        console.log("ℹ️  DAILY_API_KEY not set - skipping room presence check");
+        console.log("ℹ️  DAILY_API_KEY not set - skipping recordings fetch");
       }
 
       // Fetch recording information from Daily API
