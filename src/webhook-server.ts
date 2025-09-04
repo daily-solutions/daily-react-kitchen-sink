@@ -56,6 +56,7 @@ interface BatchProcessorResponse {
   id: string;
 }
 
+// This is an example, replace with your own processing function
 async function processRecordingSummary(roomName: string, recordingId: string) {
   console.log(
     `Processing recording summary for Room: ${roomName}, Recording ID: ${recordingId}`
@@ -133,23 +134,20 @@ app.get("/health", (_req, res) => {
 });
 
 // Catch-all webhook endpoint for debugging
-app.post("/webhooks/*", (req, res) => {
+// eslint-disable-next-line @typescript-eslint/no-misused-promises
+app.post("/webhooks/*", async (req, res) => {
   if (!process.env.DAILY_API_KEY) {
     console.error("ℹ️  DAILY_API_KEY not set - skipping webhook processing");
-    return res
-      .status(400)
-      .json({ error: "Set DAILY_API_KEY environment variable" });
+    res.status(400).json({ error: "Set DAILY_API_KEY environment variable" });
+    return;
   }
 
-  // Use an async IIFE to handle the async operations
-  (async () => {
+  try {
     console.log("\n📥 WEBHOOK RECEIVED");
     console.log("===========================");
     console.log("Path:", req.path);
 
     const webhook = req.body as DailyWebhook;
-    console.log("Event Type:", webhook.type);
-    console.log("Event ID:", webhook.id);
 
     if (webhook.type === "recording.ready-to-download") {
       console.log("\n🎉 RECORDING READY TO DOWNLOAD");
@@ -172,11 +170,12 @@ app.post("/webhooks/*", (req, res) => {
     console.log("\nFull payload:");
     console.log(JSON.stringify(req.body, null, 2));
     console.log("===========================\n");
-  })().catch((error) => {
-    console.error("❌ Async operation failed:", error);
-  });
 
-  res.status(200).json({ received: true });
+    res.status(200).json({ received: true });
+  } catch (error) {
+    console.error("❌ Error processing webhook:", error);
+    res.status(500).json({ error: "Internal server error" });
+  }
 });
 
 // Start the server
