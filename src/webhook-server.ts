@@ -52,6 +52,81 @@ const PORT = 4000; // Different port from Vite (3000)
 // Middleware to parse JSON payloads
 app.use(express.json());
 
+interface BatchProcessorResponse {
+  id: string;
+}
+
+async function processRecordingSummary(roomName: string, recordingId: string) {
+  console.log(
+    `Processing recording summary for Room: ${roomName}, Recording ID: ${recordingId}`
+  );
+  // Use the Daily Batch Processor API to generate a transcription
+  try {
+    await submitTranscriptionJob(recordingId, roomName);
+  } catch (error) {
+    console.error("Failed to submit transcription job:", error);
+  }
+}
+
+async function submitTranscriptionJob(
+  recordingId: string,
+  roomName: string
+): Promise<BatchProcessorResponse> {
+  try {
+    console.log(
+      `🎯 Submitting transcription job for recording: ${recordingId}`
+    );
+
+    const response = await fetch("https://api.daily.co/v1/batch-processor", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${process.env.DAILY_API_KEY}`,
+      },
+      body: JSON.stringify({
+        preset: "transcript",
+        inParams: {
+          sourceType: "recordingId",
+          recordingId: recordingId,
+          language: "en",
+        },
+        outParams: {
+          s3Config: {
+            s3KeyTemplate: `transcript-${roomName}-{epoch_time}`,
+            useReplacement: true,
+          },
+        },
+        transformParams: {
+          transcript: {
+            punctuate: true,
+            profanity_filter: false,
+            model: "general",
+          },
+        },
+      }),
+    });
+
+    if (!response.ok) {
+      throw new Error(
+        `Failed to submit transcription job: ${response.status} ${response.statusText}`
+      );
+    }
+
+    const result = (await response.json()) as BatchProcessorResponse;
+    console.log(
+      `✅ Transcription job submitted successfully! Job ID: ${result.id}`
+    );
+    console.log(
+      `📝 Transcript will be saved as: transcript-${roomName}-{epoch_time}`
+    );
+
+    return result;
+  } catch (error) {
+    console.error("❌ Error submitting transcription job:", error);
+    throw error;
+  }
+}
+
 // Health check endpoint for webhook verification
 app.get("/health", (_req, res) => {
   res.status(200).json({ status: "ok", message: "Webhook server is running" });
@@ -78,14 +153,6 @@ app.post("/webhooks/*", (req, res) => {
 
     if (webhook.type === "recording.ready-to-download") {
       console.log("\n🎉 RECORDING READY TO DOWNLOAD");
-      console.log("Recording ID:", webhook.payload.recording_id);
-      console.log("Room Name:", webhook.payload.room_name);
-      console.log("Status:", webhook.payload.status);
-      console.log("Duration:", webhook.payload.duration, "seconds");
-      console.log("S3 Key:", webhook.payload.s3_key);
-      console.log("Max Participants:", webhook.payload.max_participants);
-
-      const room = webhook.payload.room_name;
 
       const startTs = webhook.payload.start_ts;
       const startTime = new Date(startTs * 1000);
@@ -95,130 +162,10 @@ app.post("/webhooks/*", (req, res) => {
         "(" + startTime.toISOString() + ")"
       );
 
-      // Fetch recordings for this room from Daily API
-      if (room && process.env.DAILY_API_KEY) {
-        try {
-          const response = await fetch(
-            `https://api.daily.co/v1/recordings?limit=1&room_name=${encodeURIComponent(
-              room
-            )}`,
-            {
-              method: "GET",
-              headers: {
-                Authorization: `Bearer ${process.env.DAILY_API_KEY}`,
-                "Content-Type": "application/json",
-              },
-            }
-          );
-
-          if (response.ok) {
-            const recordingsData: unknown = await response.json();
-            console.log("📋 Recordings for room from Daily API:");
-            console.log(JSON.stringify(recordingsData, null, 2));
-          } else {
-            console.log(
-              "❌ Failed to fetch recordings:",
-              response.status,
-              response.statusText
-            );
-          }
-        } catch (error) {
-          console.log("❌ Error fetching recordings:", error);
-        }
-      } else if (!process.env.DAILY_API_KEY) {
-        console.log("ℹ️  DAILY_API_KEY not set - skipping recordings fetch");
-      }
-
-      // Fetch recording information from Daily API
-      const recordingId = webhook.payload.recording_id;
-      if (recordingId) {
-        try {
-          const response = await fetch(
-            `https://api.daily.co/v1/recordings/${recordingId}`,
-            {
-              method: "GET",
-              headers: {
-                Authorization: `Bearer ${process.env.DAILY_API_KEY}`,
-                "Content-Type": "application/json",
-              },
-            }
-          );
-
-          if (response.ok) {
-            const recordingInfo: unknown = await response.json();
-            console.log("📋 Recording Information from Daily API:");
-            console.log(JSON.stringify(recordingInfo, null, 2));
-          } else {
-            console.log(
-              "❌ Failed to fetch recording info:",
-              response.status,
-              response.statusText
-            );
-          }
-        } catch (error) {
-          console.log("❌ Error fetching recording info:", error);
-        }
-      }
-    } else if (webhook.type === "meeting.ended") {
-      console.log("\n🏁 MEETING ENDED");
-      console.log("Meeting ID:", webhook.payload.meeting_id);
-      console.log("Room:", webhook.payload.room);
-
-      const startTs = webhook.payload.start_ts;
-      const endTs = webhook.payload.end_ts;
-      const startTime = new Date(startTs * 1000);
-      const endTime = new Date(endTs * 1000);
-      const durationSeconds = Math.round(endTs - startTs);
-      const meetingId = webhook.payload.meeting_id;
-      const room = webhook.payload.room;
-
-      console.log(
-        "Meeting Started:",
-        startTs,
-        "(" + startTime.toISOString() + ")"
-      );
-      console.log("Meeting Ended:", endTs, "(" + endTime.toISOString() + ")");
-      console.log("Meeting Duration:", durationSeconds, "seconds");
-      console.log("Meeting ID:", meetingId);
-
-      // Fetch recordings for this room from Daily API
-      if (room && process.env.DAILY_API_KEY) {
-        try {
-          const response = await fetch(
-            `https://api.daily.co/v1/recordings?room_name=${encodeURIComponent(
-              room
-            )}`,
-            {
-              method: "GET",
-              headers: {
-                Authorization: `Bearer ${process.env.DAILY_API_KEY}`,
-                "Content-Type": "application/json",
-              },
-            }
-          );
-
-          if (response.ok) {
-            const recordingsData: unknown = await response.json();
-            console.log("📋 Recordings for room from Daily API:");
-            console.log(JSON.stringify(recordingsData, null, 2));
-          } else {
-            console.log(
-              "❌ Failed to fetch recordings:",
-              response.status,
-              response.statusText
-            );
-          }
-        } catch (error) {
-          console.log("❌ Error fetching recordings:", error);
-        }
-      } else if (!process.env.DAILY_API_KEY) {
-        console.log("ℹ️  DAILY_API_KEY not set - skipping recordings fetch");
-      }
-    } else {
-      const unknownWebhook = req.body as { type?: string };
-      console.log(
-        "⚠️  Unknown webhook type:",
-        unknownWebhook.type ?? "undefined"
+      // Process recording summary (includes transcription)
+      await processRecordingSummary(
+        webhook.payload.room_name,
+        webhook.payload.recording_id
       );
     }
 
@@ -240,11 +187,8 @@ function startWebhookServer() {
     console.log(`Server running on http://localhost:${PORT}`);
     console.log("Webhook endpoints:");
     console.log(`  📥 All Events: http://localhost:${PORT}/webhooks/*`);
-    console.log(`  🔍 Test/Verify: http://localhost:${PORT}/webhooks/test`);
-    console.log(`  ❤️  Health Check: http://localhost:${PORT}/health`);
     console.log("Supported events:");
     console.log("  🎉 recording.ready-to-download");
-    console.log("  🏁 meeting.ended");
     console.log("=========================================\n");
   });
 }
