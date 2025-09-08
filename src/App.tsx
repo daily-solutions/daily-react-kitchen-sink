@@ -198,7 +198,6 @@ export default function App() {
     onRecordingStopped: logEvent,
   });
 
-  useDailyEvent("load-attempt-failed", logEvent);
   useDailyEvent("joining-meeting", logEvent);
   useDailyEvent("joined-meeting", logEvent);
   useDailyEvent("track-started", logEvent);
@@ -206,7 +205,6 @@ export default function App() {
   useDailyEvent("started-camera", logEvent);
   useDailyEvent("loading", logEvent);
   useDailyEvent("loaded", logEvent);
-  useDailyEvent("load-attempt-failed", logEvent);
   useDailyEvent("receive-settings-updated", logEvent);
   useDailyEvent("left-meeting", logEvent);
 
@@ -219,6 +217,36 @@ export default function App() {
   if (nonFatalError) {
     logEvent(nonFatalError);
   }
+
+  // Handle audio processor errors when nonFatalError changes
+  useEffect(() => {
+    if (!nonFatalError || !updateInputSettings) {
+      return;
+    }
+    const { errorMsg } = nonFatalError;
+    if (!errorMsg.includes("Krisp error: system overload")) {
+      return;
+    }
+    console.log("Krisp system overload detected, disabling noise cancellation");
+
+    // Disable noise cancellation due to Krisp issue
+
+    updateInputSettings({
+      audio: {
+        processor: {
+          type: "none",
+        },
+      },
+    })
+      ?.then(() => {
+        setAudioProcessingDisabledForCPU(true);
+        // Show user notification
+        alert("Audio processing has been disabled due to system overload.");
+      })
+      .catch((err) => {
+        console.error("Error disabling audio processing for Krisp error:", err);
+      });
+  }, [nonFatalError, updateInputSettings]);
 
   const enableBlur = useCallback(() => {
     if (!callObject || enableBlurClicked) {
