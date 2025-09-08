@@ -160,7 +160,7 @@ export default function App() {
     onCPULoadChange: logEvent,
   });
 
-  // Monitor CPU load and disable audio processing when high
+  // Monitor CPU load and manage audio processing automatically
   useEffect(() => {
     if (!callObject || !updateInputSettings) {
       return;
@@ -182,6 +182,24 @@ export default function App() {
         })
         .catch((err) => {
           console.error("Error disabling audio processing for high CPU:", err);
+        });
+    }
+    // If CPU load is no longer high and we had disabled audio processing for CPU reasons
+    else if (cpuLoad.state !== "high" && audioProcessingDisabledForCPU) {
+      console.log("CPU load returned to normal, re-enabling audio processing");
+
+      updateInputSettings({
+        audio: {
+          processor: {
+            type: "noise-cancellation",
+          },
+        },
+      })
+        ?.then(() => {
+          setAudioProcessingDisabledForCPU(false);
+        })
+        .catch((err) => {
+          console.error("Error re-enabling audio processing after CPU recovery:", err);
         });
     }
   }, [
@@ -631,16 +649,20 @@ export default function App() {
         </button>
         <br />
         <button
-          disabled={noiseCancellationEnabled}
+          disabled={noiseCancellationEnabled || (cpuLoad.state === "high" && !noiseCancellationEnabled)}
           onClick={() => toggleKrisp()}
         >
           Toggle Krisp
         </button>
         {audioProcessingDisabledForCPU && (
-          <span>⚠️ Audio processing disabled due to high CPU load</span>
+          <div style={{ color: "orange", fontWeight: "bold", marginLeft: "10px" }}>
+            ⚠️ Audio processing disabled due to high CPU load
+          </div>
         )}
         {cpuLoad.state === "high" && !audioProcessingDisabledForCPU && (
-          <span>🔥 High CPU load detected</span>
+          <div style={{ color: "red", fontWeight: "bold", marginLeft: "10px" }}>
+            🔥 High CPU load detected
+          </div>
         )}
         <br />
         <button
@@ -705,7 +727,10 @@ export default function App() {
       <div>Present Participants: {present}</div>
       <div>Hidden Participants: {hidden}</div>
       <div>Network quality: {network.quality}</div>
-      <div>
+      <div style={{ 
+        color: cpuLoad.state === "high" ? "red" : "green",
+        fontWeight: "bold" 
+      }}>
         CPU load: {cpuLoad.state} {cpuLoad.reason}
       </div>
     </>
