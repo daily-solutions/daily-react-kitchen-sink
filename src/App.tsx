@@ -112,7 +112,15 @@ export default function App() {
     inputSettings?.audio?.processor?.type === "noise-cancellation";
 
   const { startScreenShare, stopScreenShare, screens, isSharingScreen } =
-    useScreenShare();
+    useScreenShare({
+      onError: logEvent,
+      onLocalScreenShareStarted: () => {
+        logEvent({ action: "local-screen-share-started" });
+      },
+      onLocalScreenShareStopped: () => {
+        logEvent({ action: "local-screen-share-stopped" });
+      },
+    });
 
   const participantIds = useParticipantIds({
     onParticipantJoined: useCallback(
