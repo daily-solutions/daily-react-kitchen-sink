@@ -3,34 +3,13 @@
 This project console logs every event listener for Daily React. This is a great
 way to debug exactly what events are fired when trying to reproduce an issue.
 
-## Features
-
-### Screen Share Send Settings Demo
-This branch (`demo/screenshare-send-settings`) demonstrates how to configure screen share resolution and bitrate settings using Daily.js:
-
-- **720p Screen Share**: 1280x720 resolution with optimized encoding layers
-- **1080p Screen Share**: 1920x1080 resolution with high-quality settings  
-- **Default Mode**: Uses Daily's motion-optimized preset
-
-#### Implementation Details
-- Uses `callObject.startScreenShare()` with custom `displayMediaOptions` and `screenVideoSendSettings`
-- Configures simulcast layers for optimal bandwidth usage
-- Provides real-time quality selection via dropdown interface
-- Console logs show detailed configuration for each quality mode
-
-#### Usage
-1. Select desired screen share quality from the dropdown
-2. Click "Start Screen Share" to begin with custom settings
-3. Monitor console output to see the applied configuration
-4. Compare bandwidth usage and visual quality between modes
-
 ## Available Scripts
 
 In the project directory, you can run:
 
-### `npm run dev`
+### `npm start`
 
-Runs the app in development mode with host binding.\
+Runs the app in the development mode.\
 Open [http://localhost:3000](http://localhost:3000) to view it in the browser.
 
 The page will reload if you make edits.\

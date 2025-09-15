@@ -72,7 +72,9 @@ export default function App() {
   const [enableBackgroundClicked, setEnableBackgroundClicked] = useState(false);
   const [dailyRoomUrl, setDailyRoomUrl] = useState("");
   const [dailyMeetingToken, setDailyMeetingToken] = useState("");
-  const [screenShareQuality, setScreenShareQuality] = useState<"720p" | "1080p" | "default">("720p");
+  const [screenShareQuality, setScreenShareQuality] = useState<
+    "480p" | "720p" | "1080p" | "default"
+  >("720p");
 
   const {
     cameraError,
@@ -112,16 +114,15 @@ export default function App() {
   const noiseCancellationEnabled =
     inputSettings?.audio?.processor?.type === "noise-cancellation";
 
-  const { stopScreenShare, screens, isSharingScreen } =
-    useScreenShare({
-      onError: logEvent,
-      onLocalScreenShareStarted: () => {
-        logEvent({ action: "local-screen-share-started" });
-      },
-      onLocalScreenShareStopped: () => {
-        logEvent({ action: "local-screen-share-stopped" });
-      },
-    });
+  const { stopScreenShare, screens, isSharingScreen } = useScreenShare({
+    onError: logEvent,
+    onLocalScreenShareStarted: () => {
+      logEvent({ action: "local-screen-share-started" });
+    },
+    onLocalScreenShareStopped: () => {
+      logEvent({ action: "local-screen-share-stopped" });
+    },
+  });
 
   const startCustomScreenShare = useCallback(() => {
     if (!callObject) {
@@ -135,6 +136,24 @@ export default function App() {
     let displayMediaOptions: any;
 
     switch (screenShareQuality) {
+      case "480p":
+        displayMediaOptions = {
+          video: {
+            width: { ideal: 854 },
+            height: { ideal: 480 },
+            frameRate: { ideal: 15 },
+          },
+          audio: true,
+        };
+        screenVideoSendSettings = {
+          low: {
+            maxBitrate: 600000, // 600 kbps for 480p
+            maxFramerate: 15,
+            scaleResolutionDownBy: 1, // Full 854x480 resolution
+          },
+          maxQuality: "low", // Only send the low layer
+        };
+        break;
       case "720p":
         displayMediaOptions = {
           video: {
@@ -146,7 +165,7 @@ export default function App() {
         };
         screenVideoSendSettings = {
           low: {
-            maxBitrate: 1200000, // 1.2 Mbps  
+            maxBitrate: 1200000, // 1.2 Mbps
             maxFramerate: 30,
             scaleResolutionDownBy: 1, // Full 1280x720 resolution
           },
@@ -637,8 +656,13 @@ export default function App() {
           Screen Share Quality:
           <select
             value={screenShareQuality}
-            onChange={(e) => setScreenShareQuality(e.target.value as "720p" | "1080p" | "default")}
+            onChange={(e) =>
+              setScreenShareQuality(
+                e.target.value as "480p" | "720p" | "1080p" | "default"
+              )
+            }
           >
+            <option value="480p">480p (854x480) - Low Bandwidth</option>
             <option value="720p">720p (1280x720)</option>
             <option value="1080p">1080p (1920x1080)</option>
             <option value="default">Default (Motion Optimized)</option>
@@ -653,7 +677,9 @@ export default function App() {
             }
           }}
         >
-          {isSharingScreen ? "Stop Screen Share" : `Start Screen Share (${screenShareQuality})`}
+          {isSharingScreen
+            ? "Stop Screen Share"
+            : `Start Screen Share (${screenShareQuality})`}
         </button>
         <br />
         <button onClick={stopCamera}>Camera Off</button>
