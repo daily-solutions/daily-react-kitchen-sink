@@ -146,16 +146,11 @@ export default function App() {
         };
         screenVideoSendSettings = {
           low: {
-            maxBitrate: 500000, // 500 kbps
-            maxFramerate: 15,
-            scaleResolutionDownBy: 2, // 640x360
-          },
-          medium: {
             maxBitrate: 1200000, // 1.2 Mbps  
             maxFramerate: 30,
-            scaleResolutionDownBy: 1, // 1280x720
+            scaleResolutionDownBy: 1, // Full 1280x720 resolution
           },
-          maxQuality: "medium",
+          maxQuality: "low", // Only send the low layer
         };
         break;
       case "1080p":
@@ -169,21 +164,11 @@ export default function App() {
         };
         screenVideoSendSettings = {
           low: {
-            maxBitrate: 500000, // 500 kbps
-            maxFramerate: 15,
-            scaleResolutionDownBy: 4, // 480x270
-          },
-          medium: {
-            maxBitrate: 1500000, // 1.5 Mbps
+            maxBitrate: 2500000, // 2.5 Mbps for 1080p
             maxFramerate: 30,
-            scaleResolutionDownBy: 2, // 960x540
+            scaleResolutionDownBy: 1, // Full 1920x1080 resolution
           },
-          high: {
-            maxBitrate: 3000000, // 3 Mbps
-            maxFramerate: 30,
-            scaleResolutionDownBy: 1, // 1920x1080
-          },
-          maxQuality: "high",
+          maxQuality: "low", // Only send the low layer
         };
         break;
       default:
