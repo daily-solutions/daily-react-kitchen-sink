@@ -1,12 +1,16 @@
 import React, { useCallback, useRef, useState } from "react";
 import Daily, {
   DailyEventObject,
+  DailyEventObjectAppMessage,
   DailyEventObjectParticipant,
+  DailyEventObjectRecordingStarted,
+  DailyEventObjectRecordingStopped,
 } from "@daily-co/daily-js";
 
 import {
   DailyAudio,
   DailyVideo,
+  useAppMessage,
   useAudioLevelObserver,
   useCPULoad,
   useDaily,
@@ -25,6 +29,7 @@ import {
 } from "@daily-co/daily-react";
 
 import "./styles.css";
+import { log } from "console";
 
 console.info("Daily version: %s", Daily.version());
 console.info("Daily supported Browser:");
@@ -166,11 +171,53 @@ export default function App() {
     onCPULoadChange: logEvent,
   });
 
-  const { startRecording, stopRecording, isRecording } = useRecording({
+  interface CustomAppMessage {
+    recordingId: string | null;
+    isRecording: boolean;
+  }
+
+  const sendAppMessage = useAppMessage<CustomAppMessage>({
+    onAppMessage: useCallback(
+      (message: DailyEventObjectAppMessage<CustomAppMessage>) => {
+        console.log(message);
+      },
+      []
+    ),
+  });
+
+  const {
+    startRecording,
+    stopRecording,
+    isRecording,
+    isLocalParticipantRecorded,
+    recordingId,
+    recordingStartedDate,
+  } = useRecording({
     onRecordingData: logEvent,
     onRecordingError: logEvent,
-    onRecordingStarted: logEvent,
-    onRecordingStopped: logEvent,
+    onRecordingStarted: useCallback(
+      (ev: DailyEventObjectRecordingStarted) => {
+        if (!ev) return;
+
+        if (ev.recordingId) {
+          sendAppMessage({
+            recordingId: ev.recordingId,
+            isRecording: true,
+          });
+        }
+      },
+      [sendAppMessage]
+    ),
+    onRecordingStopped: useCallback(
+      (ev: DailyEventObjectRecordingStopped) => {
+        logEvent(ev);
+        sendAppMessage({
+          recordingId: null,
+          isRecording: false,
+        });
+      },
+      [sendAppMessage, logEvent]
+    ),
   });
 
   useDailyEvent("load-attempt-failed", logEvent);
@@ -615,6 +662,17 @@ export default function App() {
 
       <DailyAudio />
       <MicVolumeVisualizer />
+      <div>
+        Recording info:
+        <pre>
+          {JSON.stringify({
+            isRecording,
+            isLocalParticipantRecorded,
+            recordingId,
+            recordingStartedDate,
+          })}
+        </pre>
+      </div>
       <div id="meetingState">Meeting State: {meetingState}</div>
       {inputSettings && <div>Input settings updated</div>}
       {errorMsg && <div id="errorMsg">{errorMsg}</div>}
