@@ -457,67 +457,9 @@ export default function App() {
 
   const meetingState = useMeetingState();
 
-  const createRoom = () => {
-    // Send a POST request to /rooms to create a room
-    fetch("/rooms", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        privacy: "private",
-        name: "test-room-" + Math.random().toString(36).substring(7),
-        properties: {
-          // Expire in an hour
-          exp: Math.floor(Date.now() / 1000) + 60 * 60,
-        },
-      }),
-    })
-      .then((res) => res.json())
-      .then((data) => {
-        console.log("Room created", data);
-        // eslint-disable-next-line @typescript-eslint/no-unsafe-argument, @typescript-eslint/no-unsafe-member-access
-        setDailyRoomUrl(data.url);
-      })
-      .catch((err) => {
-        console.error("Error creating room", err);
-      });
-  };
-
-  const createMeetingToken = () => {
-    // Send a POST request to /rooms to create a room
-    fetch("/meeting-tokens", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        properties: {
-          is_owner: true,
-          room_name: dailyRoomUrl.split("/").pop(),
-          user_name: "test-user-" + Math.random().toString(36).substring(7),
-        },
-      }),
-    })
-      .then((res) => res.json())
-      .then((data) => {
-        console.log("Token created", data);
-        // eslint-disable-next-line @typescript-eslint/no-unsafe-argument, @typescript-eslint/no-unsafe-member-access
-        setDailyMeetingToken(data.token);
-      })
-      .catch((err) => {
-        console.error("Error creating room", err);
-      });
-  };
-
   return (
     <>
       <div className="App">
-        0. Create a room and meeting token (optional)
-        <br />
-        <button onClick={createRoom}>Create Room</button>
-        <button onClick={createMeetingToken}>Create Meeting Token</button>
-        <br />
         <br />
         1. Join the call
         <br />
