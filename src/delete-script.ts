@@ -257,7 +257,7 @@ async function deleteRecordingsForApiKey(
     );
 
     // Process recordings in parallel batches to avoid overwhelming the API
-    const batchSize = 5; // Number of parallel deletions per batch
+    const batchSize = 20; // Number of parallel deletions per batch
     const batches = chunkArray(recordings, batchSize);
 
     let successCount = 0;
