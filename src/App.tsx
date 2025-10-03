@@ -61,6 +61,8 @@ export default function App() {
     },
   });
 
+  console.log("++++ Audio input settings: ", inputSettings?.audio?.settings);
+
   const noiseCancellationEnabled =
     inputSettings?.audio?.processor?.type === "noise-cancellation";
 
@@ -275,33 +277,18 @@ export default function App() {
     mic: string | undefined,
     noiseSuppression: boolean
   ) => {
-    if (!callObject) return;
-
-    navigator.mediaDevices
-      .getUserMedia({
-        audio: {
-          deviceId: mic ? { exact: mic } : undefined,
+    updateInputSettings({
+      audio: {
+        settings: {
           autoGainControl: false,
           echoCancellation: true,
           noiseSuppression: { exact: noiseSuppression },
         },
-      })
-      .then((mediaStream) => {
-        const audioTracks = mediaStream.getAudioTracks();
-        const audioSource = audioTracks[0];
-
-        console.log(
-          "Setting custom audio track: noiseSuppression",
-          audioSource.getSettings().noiseSuppression
-        );
-
-        setBrowserNoiseSuppressionEnabled(
-          audioSource.getSettings().noiseSuppression ?? false
-        );
-
-        return callObject.setInputDevicesAsync({
-          audioSource,
-        });
+      },
+    })
+      ?.then((r) => {
+        console.log("Updated input settings: ", r);
+        setBrowserNoiseSuppressionEnabled(!noiseSuppression);
       })
       .catch((err) => {
         console.error("Error getting custom audio track: ", err);
