@@ -23,6 +23,17 @@ interface RecordingsResponse {
   data: Recording[];
 }
 
+interface RecordingAccessLink {
+  download_link: string;
+  expires: number;
+}
+
+interface RecordingWithLink extends Recording {
+  download_link?: string;
+  expires?: number;
+  error?: string;
+}
+
 /**
  * Sleep for a specified number of milliseconds
  */
@@ -94,18 +105,19 @@ async function retryWithBackoff<T>(
 }
 
 /**
- * Delete a specific recording by ID using Daily.co REST API
+ * Get access link for a specific recording by ID using Daily.co REST API
  */
-async function deleteRecording(
+async function getRecordingAccessLink(
   recordingId: string,
-  apiKey: string
-): Promise<boolean> {
+  apiKey: string,
+  validForSecs = 3600
+): Promise<RecordingAccessLink | null> {
   try {
     return await retryWithBackoff(async () => {
       const response = await fetch(
-        `${DAILY_API_BASE}/recordings/${recordingId}`,
+        `${DAILY_API_BASE}/recordings/${recordingId}/access-link?valid_for_secs=${validForSecs}`,
         {
-          method: "DELETE",
+          method: "GET",
           headers: {
             Authorization: `Bearer ${apiKey}`,
             "Content-Type": "application/json",
@@ -114,21 +126,24 @@ async function deleteRecording(
       );
 
       if (response.ok) {
-        console.log(`✅ Successfully deleted recording: ${recordingId}`);
-        return true;
+        const data = (await response.json()) as RecordingAccessLink;
+        console.log(
+          `✅ Successfully got access link for recording: ${recordingId}`
+        );
+        return data;
       } else if (response.status === 429) {
         // Rate limited - throw custom error to trigger retry
         throw new RateLimitError(
           429,
-          `Rate limited when deleting recording ${recordingId}`
+          `Rate limited when getting access link for recording ${recordingId}`
         );
       } else {
         const errorData = await response.text();
         console.error(
-          `❌ Failed to delete recording ${recordingId}: ${response.status} ${response.statusText}`
+          `❌ Failed to get access link for recording ${recordingId}: ${response.status} ${response.statusText}`
         );
         console.error("Error details:", errorData);
-        return false;
+        return null;
       }
     });
   } catch (error) {
@@ -137,9 +152,12 @@ async function deleteRecording(
         `❌ Rate limit exceeded for recording ${recordingId} after all retries`
       );
     } else {
-      console.error(`❌ Error deleting recording ${recordingId}:`, error);
+      console.error(
+        `❌ Error getting access link for recording ${recordingId}:`,
+        error
+      );
     }
-    return false;
+    return null;
   }
 }
 
@@ -232,12 +250,13 @@ async function getRecordings(
 }
 
 /**
- * Delete all recordings for a specific API key with parallel processing
+ * Get recording links for a specific API key with parallel processing
  */
-async function deleteRecordingsForApiKey(
+async function getRecordingLinksForApiKey(
   apiKey: string,
-  keyIndex: number
-): Promise<{ success: number; failure: number }> {
+  keyIndex: number,
+  validForSecs = 3600
+): Promise<RecordingWithLink[]> {
   console.log(
     `\n🔑 Processing API key ${keyIndex + 1}/${DAILY_API_KEYS.length}...`
   );
@@ -247,25 +266,24 @@ async function deleteRecordingsForApiKey(
 
     if (recordings.length === 0) {
       console.log(`✨ No recordings found for API key ${keyIndex + 1}`);
-      return { success: 0, failure: 0 };
+      return [];
     }
 
     console.log(
-      `📊 Found ${recordings.length} recordings to delete for API key ${
+      `📊 Found ${recordings.length} recordings to get links for API key ${
         keyIndex + 1
       }`
     );
 
     // Process recordings in parallel batches to avoid overwhelming the API
-    const batchSize = 20; // Number of parallel deletions per batch
+    const batchSize = 20; // Number of parallel requests per batch
     const batches = chunkArray(recordings, batchSize);
 
-    let successCount = 0;
-    let failureCount = 0;
+    const recordingsWithLinks: RecordingWithLink[] = [];
     let processedCount = 0;
 
     console.log(
-      `🚀 Processing ${batches.length} batches of ${batchSize} deletions each...`
+      `🚀 Processing ${batches.length} batches of ${batchSize} recordings each...`
     );
 
     // Process each batch in parallel
@@ -277,33 +295,47 @@ async function deleteRecordingsForApiKey(
         `\n📦 Processing batch ${batchNumber}/${batches.length} (${batch.length} recordings)...`
       );
 
-      // Delete all recordings in this batch in parallel
+      // Get access links for all recordings in this batch in parallel
       const batchPromises = batch.map(async (recording, recordingIndex) => {
         const globalIndex = batchIndex * batchSize + recordingIndex + 1;
         console.log(
-          `🗑️  [${globalIndex}/${recordings.length}] Deleting: ${recording.id} (room: ${recording.room_name})`
+          `� [${globalIndex}/${recordings.length}] Getting link: ${recording.id} (room: ${recording.room_name})`
         );
 
-        const success = await deleteRecording(recording.id, apiKey);
-        return { success, recording };
+        const accessLink = await getRecordingAccessLink(
+          recording.id,
+          apiKey,
+          validForSecs
+        );
+
+        if (accessLink) {
+          return {
+            ...recording,
+            download_link: accessLink.download_link,
+            expires: accessLink.expires,
+          } as RecordingWithLink;
+        } else {
+          return {
+            ...recording,
+            error: "Failed to get access link",
+          } as RecordingWithLink;
+        }
       });
 
-      // Wait for all deletions in this batch to complete
+      // Wait for all requests in this batch to complete
       const batchResults = await Promise.all(batchPromises);
+      recordingsWithLinks.push(...batchResults);
 
-      // Count results from this batch
-      const batchSuccess = batchResults.filter((r) => r.success).length;
-      const batchFailure = batchResults.filter((r) => !r.success).length;
-
-      successCount += batchSuccess;
-      failureCount += batchFailure;
       processedCount += batch.length;
 
+      const successCount = batchResults.filter((r) => r.download_link).length;
+      const failureCount = batchResults.filter((r) => r.error).length;
+
       console.log(
-        `✅ Batch ${batchNumber} complete: ${batchSuccess} succeeded, ${batchFailure} failed`
+        `✅ Batch ${batchNumber} complete: ${successCount} succeeded, ${failureCount} failed`
       );
       console.log(
-        `📈 Overall progress: ${processedCount}/${recordings.length} processed (${successCount} succeeded, ${failureCount} failed)`
+        `📈 Overall progress: ${processedCount}/${recordings.length} processed`
       );
 
       // Add a delay between batches to be respectful to the API
@@ -313,27 +345,32 @@ async function deleteRecordingsForApiKey(
       }
     }
 
+    const successCount = recordingsWithLinks.filter(
+      (r) => r.download_link
+    ).length;
+    const failureCount = recordingsWithLinks.filter((r) => r.error).length;
+
     console.log(`\n📈 API Key ${keyIndex + 1} Final Summary:`);
-    console.log(`✅ Successfully deleted: ${successCount} recordings`);
-    console.log(`❌ Failed to delete: ${failureCount} recordings`);
+    console.log(`✅ Successfully got links for: ${successCount} recordings`);
+    console.log(`❌ Failed to get links for: ${failureCount} recordings`);
     console.log(
       `📊 Success rate: ${((successCount / recordings.length) * 100).toFixed(
         1
       )}%`
     );
 
-    return { success: successCount, failure: failureCount };
+    return recordingsWithLinks;
   } catch (error) {
     console.error(`❌ Error processing API key ${keyIndex + 1}:`, error);
-    return { success: 0, failure: 0 };
+    return [];
   }
 }
 
 /**
- * Delete all recordings across all API keys
+ * Generate recording links across all API keys
  */
 async function main(): Promise<void> {
-  console.log("🚀 Starting recording deletion process...");
+  console.log("🚀 Starting recording link generation process...");
 
   if (DAILY_API_KEYS.length === 0) {
     console.error(
@@ -344,17 +381,15 @@ async function main(): Promise<void> {
 
   console.log(`🔑 Found ${DAILY_API_KEYS.length} API key(s) to process`);
 
-  let totalSuccess = 0;
-  let totalFailure = 0;
+  const allRecordingsWithLinks: RecordingWithLink[] = [];
 
   // Process each API key
   for (let i = 0; i < DAILY_API_KEYS.length; i++) {
     const apiKey = DAILY_API_KEYS[i];
     if (!apiKey) continue;
 
-    const result = await deleteRecordingsForApiKey(apiKey, i);
-    totalSuccess += result.success;
-    totalFailure += result.failure;
+    const recordingsWithLinks = await getRecordingLinksForApiKey(apiKey, i);
+    allRecordingsWithLinks.push(...recordingsWithLinks);
 
     // Add a delay between API keys to be respectful
     if (i < DAILY_API_KEYS.length - 1) {
@@ -363,46 +398,92 @@ async function main(): Promise<void> {
     }
   }
 
+  const successCount = allRecordingsWithLinks.filter(
+    (r) => r.download_link
+  ).length;
+  const failureCount = allRecordingsWithLinks.filter((r) => r.error).length;
+
   console.log("\n🎉 Final Summary Across All API Keys:");
-  console.log(`✅ Total successfully deleted: ${totalSuccess} recordings`);
-  console.log(`❌ Total failed to delete: ${totalFailure} recordings`);
-  console.log("🏁 Finished deleting recordings from all accounts");
+  console.log(`✅ Total recordings with links: ${successCount}`);
+  console.log(`❌ Total failed to get links: ${failureCount}`);
+  console.log(
+    `📊 Total recordings processed: ${allRecordingsWithLinks.length}`
+  );
+
+  // Output the links in a readable format
+  console.log("\n📋 Recording Links:");
+  console.log("=".repeat(80));
+
+  allRecordingsWithLinks.forEach((recording, index) => {
+    console.log(`\n${index + 1}. Recording ID: ${recording.id}`);
+    console.log(`   Room: ${recording.room_name}`);
+    console.log(`   Status: ${recording.status}`);
+    console.log(`   Duration: ${recording.duration} seconds`);
+    console.log(
+      `   Start Time: ${new Date(recording.start_ts * 1000).toISOString()}`
+    );
+
+    if (recording.download_link) {
+      console.log(`   Download Link: ${recording.download_link}`);
+      console.log(
+        `   Expires: ${new Date(recording.expires! * 1000).toISOString()}`
+      );
+    } else if (recording.error) {
+      console.log(`   ❌ Error: ${recording.error}`);
+    }
+  });
+
+  console.log("\n" + "=".repeat(80));
+  console.log("🏁 Finished generating recording links from all accounts");
+
+  // Optionally write to a JSON file for easy import
+  const outputData = {
+    generated_at: new Date().toISOString(),
+    total_recordings: allRecordingsWithLinks.length,
+    successful: successCount,
+    failed: failureCount,
+    recordings: allRecordingsWithLinks,
+  };
+
+  console.log("\n📄 Recording data (JSON format):");
+  console.log(JSON.stringify(outputData, null, 2));
 }
 
 /**
- * Delete a single recording by ID using the first available API key
+ * Get access link for a single recording by ID using the first available API key
  */
-async function deleteSingleRecording(
+async function getSingleRecordingLink(
   recordingId: string,
-  apiKeyIndex = 0
-): Promise<void> {
-  console.log(`🗑️  Deleting single recording: ${recordingId}`);
+  apiKeyIndex = 0,
+  validForSecs = 3600
+): Promise<RecordingAccessLink | null> {
+  console.log(`� Getting link for single recording: ${recordingId}`);
 
   if (DAILY_API_KEYS.length === 0) {
     console.error(
       "❌ Please set your DAILY_API_KEY environment variables or update the script"
     );
-    return;
+    return null;
   }
 
   const apiKey = DAILY_API_KEYS[apiKeyIndex];
   if (!apiKey) {
     console.error(`❌ API key at index ${apiKeyIndex} is not available`);
-    return;
+    return null;
   }
 
-  await deleteRecording(recordingId, apiKey);
+  return await getRecordingAccessLink(recordingId, apiKey, validForSecs);
 }
 
 // Export functions for use in other modules
 export {
-  deleteRecording,
+  getRecordingAccessLink,
   getRecordings,
-  deleteRecordingsForApiKey,
-  deleteSingleRecording,
+  getRecordingLinksForApiKey,
+  getSingleRecordingLink,
 };
 
-// Run the deletion script if this file is executed directly
+// Run the generate recording links script if this file is executed directly
 // For ES modules, we need to check if the file path matches
 const __filename = fileURLToPath(import.meta.url);
 
