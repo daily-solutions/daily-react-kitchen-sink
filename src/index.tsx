@@ -23,6 +23,7 @@ root.render(
     ) : (
       <DailyProvider
         subscribeToTracksAutomatically={false}
+        startVideoOff={true}
         dailyConfig={{ useDevicePreferenceCookies: true }}
       >
         <App />
