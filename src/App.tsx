@@ -280,7 +280,7 @@ export default function App() {
       audio: {
         settings: {
           autoGainControl: false,
-          echoCancellation: true,
+          echoCancellation: false,
           noiseSuppression: { exact: !browserNoiseSuppressionEnabled },
         },
       },
