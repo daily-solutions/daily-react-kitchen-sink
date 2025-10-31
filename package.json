@@ -17,7 +17,8 @@
     "react-dom": "^19.1.1"
   },
   "scripts": {
-    "delete": "node --experimental-strip-types src/delete-script.ts",
+    "delete-rooms": "node --experimental-strip-types src/delete-rooms.ts",
+    "delete-recordings": "node --experimental-strip-types src/delete-recordings.ts",
     "dev": "vite --host",
     "build": "tsc && vite build",
     "serve": "vite preview",
