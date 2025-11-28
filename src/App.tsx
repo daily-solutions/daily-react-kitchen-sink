@@ -360,6 +360,32 @@ export default function App() {
       });
   }, [callObject]);
 
+  const startCustomAudioTrack = useCallback(() => {
+    if (!callObject) {
+      return;
+    }
+    const trackName = "customAudioTrack";
+    navigator.mediaDevices
+      .getUserMedia({ audio: true })
+      .then((customAudioStream) => {
+        return callObject.startCustomTrack({
+          track: customAudioStream.getAudioTracks()[0],
+          trackName,
+          // Music mode: 256kbps stereo audio
+          mode: "music",
+        });
+      })
+      .then((returnedTrackName) => {
+        console.log(
+          "Custom audio track started with music mode:",
+          returnedTrackName
+        );
+      })
+      .catch((err) => {
+        console.error("Error enabling custom audio track", err);
+      });
+  }, [callObject]);
+
   const load = useCallback(() => {
     if (!callObject) {
       return;
@@ -492,6 +518,10 @@ export default function App() {
         <br />
         <button onClick={startCamera}>Start Camera</button> <br />
         <button onClick={startCustomTrack}>Start Custom Track</button>
+        <br />
+        <button onClick={startCustomAudioTrack}>
+          Start Custom Audio Track (Music Mode)
+        </button>
         <br />
         <button disabled={!dailyRoomUrl.length} onClick={joinRoom}>
           Join call
