@@ -12,7 +12,8 @@ const DAILY_API_BASE = "https://api.daily.co/v1";
 
 // Delete rooms created before this date (ISO 8601 format: YYYY-MM-DD or full timestamp)
 // Set to null to delete all rooms regardless of creation date
-const DELETE_ROOMS_BEFORE_DATE: string | null = "2022-07-11"; // Example: Delete rooms created before Jan 1, 2025
+const DELETE_ROOMS_BEFORE_DATE: string | null = "2025-10-31"; // Example: Delete rooms created before Jan 1, 2025
+//const DELETE_ROOMS_BEFORE_DATE: string | null = "2023-01-01"; // Example: Delete rooms created before Jan 1, 2025
 
 interface Room {
   id: string;
@@ -38,35 +39,6 @@ interface BatchDeleteResponse {
  */
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
-}
-
-/**
- * Utility function to create chunks from an array
- */
-function chunkArray<T>(array: T[], chunkSize: number): T[][] {
-  const chunks: T[][] = [];
-  for (let i = 0; i < array.length; i += chunkSize) {
-    chunks.push(array.slice(i, i + chunkSize));
-  }
-  return chunks;
-}
-
-/**
- * Filter rooms based on creation date
- * Only returns rooms created before the specified cutoff date
- */
-function filterRoomsByDate(rooms: Room[], cutoffDate: string | null): Room[] {
-  if (!cutoffDate) {
-    return rooms; // No filtering if cutoff date is not set
-  }
-
-  const cutoffTimestamp = new Date(cutoffDate).getTime();
-  const filteredRooms = rooms.filter((room) => {
-    const roomCreatedAt = new Date(room.created_at).getTime();
-    return roomCreatedAt < cutoffTimestamp;
-  });
-
-  return filteredRooms;
 }
 
 /**
@@ -236,7 +208,7 @@ async function getRooms(apiKey: string, limit = 100): Promise<Room[]> {
 
       // Add a small delay between pagination requests
       if (hasMore) {
-        await sleep(100);
+        await sleep(50);
       }
     } catch (error) {
       if (error instanceof RateLimitError) {
@@ -255,7 +227,174 @@ async function getRooms(apiKey: string, limit = 100): Promise<Room[]> {
 }
 
 /**
- * Delete all rooms for a specific API key with batch processing
+ * Fetch and delete rooms in batches as they become available
+ * Deletes every 1000 rooms immediately instead of waiting for all rooms
+ */
+async function fetchAndDeleteRoomsStreaming(
+  apiKey: string,
+  cutoffDate: string | null
+): Promise<{ success: number; failure: number; totalFetched: number }> {
+  const BATCH_SIZE = 1000;
+  let pendingRooms: Room[] = [];
+  let startingAfter: string | undefined;
+  let hasMore = true;
+  let totalSuccess = 0;
+  let totalFailure = 0;
+  let totalFetched = 0;
+  let batchNumber = 0;
+
+  const cutoffTimestamp = cutoffDate ? new Date(cutoffDate).getTime() : null;
+
+  console.log("📥 Fetching and deleting rooms in streaming mode...");
+  if (cutoffTimestamp) {
+    console.log(`🗓️  Only deleting rooms created before ${cutoffDate}`);
+  }
+
+  while (hasMore) {
+    try {
+      // Fetch next page of rooms
+      const rooms = await retryWithBackoff(async () => {
+        const url = new URL(`${DAILY_API_BASE}/rooms`);
+        url.searchParams.append("limit", "100");
+
+        if (startingAfter) {
+          url.searchParams.append("starting_after", startingAfter);
+        }
+
+        const response = await fetch(url.toString(), {
+          method: "GET",
+          headers: {
+            Authorization: `Bearer ${apiKey}`,
+            "Content-Type": "application/json",
+          },
+        });
+
+        if (response.ok) {
+          const data = (await response.json()) as RoomsResponse;
+          return data.data ?? [];
+        } else if (response.status === 429) {
+          throw new RateLimitError(429, "Rate limited when fetching rooms");
+        } else {
+          const errorData = await response.text();
+          console.error(
+            `Failed to fetch rooms: ${response.status} ${response.statusText}`
+          );
+          console.error("Error details:", errorData);
+          return [];
+        }
+      });
+
+      if (rooms.length === 0) {
+        hasMore = false;
+        break;
+      }
+
+      totalFetched += rooms.length;
+
+      // Filter rooms by date if needed
+      const filteredRooms = cutoffTimestamp
+        ? rooms.filter((room) => {
+            const roomCreatedAt = new Date(room.created_at).getTime();
+            return roomCreatedAt < cutoffTimestamp;
+          })
+        : rooms;
+
+      pendingRooms.push(...filteredRooms);
+
+      console.log(
+        `📋 Fetched ${rooms.length} rooms${
+          cutoffTimestamp ? `, ${filteredRooms.length} before cutoff` : ""
+        } (pending: ${pendingRooms.length}, total fetched: ${totalFetched})`
+      );
+
+      // If we have 1000 or more rooms pending, delete them immediately
+      if (pendingRooms.length >= BATCH_SIZE) {
+        const batchToDelete = pendingRooms.slice(0, BATCH_SIZE);
+        pendingRooms = pendingRooms.slice(BATCH_SIZE);
+
+        batchNumber++;
+        console.log(
+          `\n🚀 Batch ${batchNumber}: Deleting ${batchToDelete.length} rooms...`
+        );
+
+        const roomNames = batchToDelete.map((room) => room.name);
+        console.log("Waiting 60 seconds before deletion.");
+        await sleep(1000 * 60); // 60 second delay before deletion
+
+        console.log(
+          `🗑️  Deleting: ${roomNames.slice(0, 5).join(", ")}${
+            roomNames.length > 5 ? "..." : ""
+          }`
+        );
+
+        const deletedCount = await batchDeleteRooms(roomNames, apiKey);
+        const batchSuccess = deletedCount;
+        const batchFailure = batchToDelete.length - deletedCount;
+
+        totalSuccess += batchSuccess;
+        totalFailure += batchFailure;
+
+        console.log(
+          `✅ Batch ${batchNumber} complete: ${batchSuccess} succeeded, ${batchFailure} failed`
+        );
+        console.log(
+          `📈 Running total: ${totalSuccess} deleted, ${totalFailure} failed\n`
+        );
+      }
+
+      // Check if we should continue fetching
+      if (rooms.length < 100) {
+        hasMore = false;
+      } else {
+        startingAfter = rooms[rooms.length - 1].id;
+      }
+
+      if (hasMore) {
+        await sleep(50);
+      }
+    } catch (error) {
+      if (error instanceof RateLimitError) {
+        console.error(
+          "❌ Rate limit exceeded when fetching rooms after all retries"
+        );
+      } else {
+        console.error("Error fetching rooms:", error);
+      }
+      hasMore = false;
+    }
+  }
+
+  // Delete any remaining rooms (less than 1000)
+  if (pendingRooms.length > 0) {
+    batchNumber++;
+    console.log(
+      `\n🚀 Final batch ${batchNumber}: Deleting remaining ${pendingRooms.length} rooms...`
+    );
+
+    const roomNames = pendingRooms.map((room) => room.name);
+    console.log(
+      `🗑️  Deleting: ${roomNames.slice(0, 5).join(", ")}${
+        roomNames.length > 5 ? "..." : ""
+      }`
+    );
+
+    const deletedCount = await batchDeleteRooms(roomNames, apiKey);
+    const batchSuccess = deletedCount;
+    const batchFailure = pendingRooms.length - deletedCount;
+
+    totalSuccess += batchSuccess;
+    totalFailure += batchFailure;
+
+    console.log(
+      `✅ Final batch complete: ${batchSuccess} succeeded, ${batchFailure} failed`
+    );
+  }
+
+  return { success: totalSuccess, failure: totalFailure, totalFetched };
+}
+
+/**
+ * Delete all rooms for a specific API key with streaming batch processing
  */
 async function deleteRoomsForApiKey(
   apiKey: string,
@@ -266,107 +405,25 @@ async function deleteRoomsForApiKey(
   );
 
   try {
-    const rooms = await getRooms(apiKey);
-
-    if (rooms.length === 0) {
-      console.log(`✨ No rooms found for API key ${keyIndex + 1}`);
-      return { success: 0, failure: 0 };
-    }
-
-    console.log(
-      `📊 Found ${rooms.length} total rooms for API key ${keyIndex + 1}`
+    const result = await fetchAndDeleteRoomsStreaming(
+      apiKey,
+      DELETE_ROOMS_BEFORE_DATE
     );
-
-    // Filter rooms by creation date
-    const roomsToDelete = filterRoomsByDate(rooms, DELETE_ROOMS_BEFORE_DATE);
-
-    if (DELETE_ROOMS_BEFORE_DATE) {
-      console.log(
-        `🗓️  Filtering rooms created before ${DELETE_ROOMS_BEFORE_DATE}`
-      );
-      console.log(
-        `📋 ${roomsToDelete.length} rooms match the date filter (${
-          rooms.length - roomsToDelete.length
-        } rooms excluded)`
-      );
-    }
-
-    if (roomsToDelete.length === 0) {
-      console.log(
-        `✨ No rooms to delete for API key ${
-          keyIndex + 1
-        } (after date filtering)`
-      );
-      return { success: 0, failure: 0 };
-    }
-
-    console.log(
-      `🎯 Will delete ${roomsToDelete.length} rooms for API key ${keyIndex + 1}`
-    );
-
-    // Process rooms in batches of 1000 (API limit)
-    const batchSize = 1000;
-    const batches = chunkArray(roomsToDelete, batchSize);
-
-    let successCount = 0;
-    let failureCount = 0;
-
-    console.log(
-      `🚀 Processing ${batches.length} batch(es) of up to ${batchSize} rooms each...`
-    );
-
-    // Process each batch sequentially
-    for (let batchIndex = 0; batchIndex < batches.length; batchIndex++) {
-      const batch = batches[batchIndex];
-      const batchNumber = batchIndex + 1;
-
-      console.log(
-        `\n📦 Processing batch ${batchNumber}/${batches.length} (${batch.length} rooms)...`
-      );
-
-      // Extract room names for batch deletion
-      const roomNames = batch.map((room) => room.name);
-
-      console.log(
-        `🗑️  Deleting batch of ${roomNames.length} rooms: ${roomNames
-          .slice(0, 5)
-          .join(", ")}${roomNames.length > 5 ? "..." : ""}`
-      );
-
-      const deletedCount = await batchDeleteRooms(roomNames, apiKey);
-
-      const batchSuccess = deletedCount;
-      const batchFailure = batch.length - deletedCount;
-
-      successCount += batchSuccess;
-      failureCount += batchFailure;
-
-      console.log(
-        `✅ Batch ${batchNumber} complete: ${batchSuccess} succeeded, ${batchFailure} failed`
-      );
-      console.log(
-        `📈 Overall progress: ${successCount + failureCount}/${
-          roomsToDelete.length
-        } processed (${successCount} succeeded, ${failureCount} failed)`
-      );
-
-      // Add a delay between batches to be respectful to the API
-      if (batchIndex < batches.length - 1) {
-        console.log("⏳ Waiting before next batch...");
-        await sleep(500); // 500ms delay between batches
-      }
-    }
 
     console.log(`\n📈 API Key ${keyIndex + 1} Final Summary:`);
-    console.log(`✅ Successfully deleted: ${successCount} rooms`);
-    console.log(`❌ Failed to delete: ${failureCount} rooms`);
-    console.log(
-      `📊 Success rate: ${((successCount / roomsToDelete.length) * 100).toFixed(
-        1
-      )}%`
-    );
+    console.log(`📊 Total rooms fetched: ${result.totalFetched}`);
+    console.log(`✅ Successfully deleted: ${result.success} rooms`);
+    console.log(`❌ Failed to delete: ${result.failure} rooms`);
+    if (result.success + result.failure > 0) {
+      console.log(
+        `� Success rate: ${(
+          (result.success / (result.success + result.failure)) *
+          100
+        ).toFixed(1)}%`
+      );
+    }
 
-    return { success: successCount, failure: failureCount };
+    return { success: result.success, failure: result.failure };
   } catch (error) {
     console.error(`❌ Error processing API key ${keyIndex + 1}:`, error);
     return { success: 0, failure: 0 };
@@ -454,7 +511,13 @@ async function deleteBatchOfRooms(
 }
 
 // Export functions for use in other modules
-export { batchDeleteRooms, getRooms, deleteRoomsForApiKey, deleteBatchOfRooms };
+export {
+  batchDeleteRooms,
+  getRooms,
+  fetchAndDeleteRoomsStreaming,
+  deleteRoomsForApiKey,
+  deleteBatchOfRooms,
+};
 
 // Run the deletion script if this file is executed directly
 // For ES modules, we need to check if the file path matches
