@@ -31,11 +31,11 @@ root.render(
             encodings: {
               // motion-optimized settings
               // We changed maxFramerate to 25 (from the default of 30)
-              low: {
-                maxBitrate: 2000000,
-                scaleResolutionDownBy: 1,
-                maxFramerate: 25,
-              },
+              // low: {
+              //   maxBitrate: 2000000,
+              //   scaleResolutionDownBy: 1,
+              //   maxFramerate: 25,
+              // },
               // motion-and-detail-balanced settings (default for screen share)
               // low: {
               //   maxBitrate: 1200000,
@@ -44,11 +44,11 @@ root.render(
               // },
               // detail-optimized settings
               // If you want to optimize for SLIDES, use these settings instead
-              // low: {
-              //   maxBitrate: 700000,
-              //   scaleResolutionDownBy: 1,
-              //   maxFramerate: 5,
-              // },
+              low: {
+                maxBitrate: 700000,
+                scaleResolutionDownBy: 1,
+                maxFramerate: 5,
+              },
             },
           },
         }}
