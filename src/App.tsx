@@ -144,7 +144,22 @@ export default function App() {
       },
       [callObject, logEvent]
     ),
-    onParticipantLeft: logEvent,
+    onParticipantLeft: useCallback(
+      (ev: DailyEventObject<"participant-left">) => {
+        console.log("Participant left:", ev);
+        try {
+          const { data } = await userGaveSpark();
+
+          if (!data?.userGaveSparkInEvent) {
+            openSparksModalAfterCall();
+            return;
+          }
+        } catch (e) {
+          enqueueSnackbar(e.message, { variant: "error" });
+        }
+      },
+      [userGaveSpark, openSparksModalAfterCall, enqueueSnackbar]
+    ),
     onParticipantUpdated: logEvent,
     onActiveSpeakerChange: logEvent,
   });
