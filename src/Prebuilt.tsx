@@ -85,6 +85,7 @@ export const Prebuilt = () => {
     options: {
       dailyConfig: {
         useDevicePreferenceCookies: true,
+        micAudioMode: "music",
       },
       url: "https://hush.daily.co/demo",
       iframeStyle: {
