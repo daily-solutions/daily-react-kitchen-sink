@@ -135,3 +135,62 @@ const handleChangeDevice = useCallback(
 - Monitor comprehensive event logging
 - Check network quality and CPU load indicators
 - Verify device enumeration and status display
+
+## Analyzing Daily Call Quality Logs (CSV)
+
+When analyzing exported CSV log files from Daily's Dashboard or `/logs` API, look for these key indicators:
+
+### Video Quality Issues
+- **`[Track]-videoQualityLimReason=[Value]`**: Look for `bandwidth`, `cpu`, or `other` values. `cpu` directly indicates CPU constraints.
+- **`[Track]-videoSendFrame=[Value]`**: Shows current video resolution being sent.
+- **`[Track]-HighestVideoSendFrameSize=[Value]`**: Should match or exceed `videoSendFrame`. Lower values indicate problems.
+- **`videoEncoderImpl=ExternalEncoder`**: May indicate hardware acceleration issues. Look for `libvpx` or similar known encoders instead.
+
+### Network Issues
+- **`Connection downlink = [Value]`**: Values below 10 (especially below 3 Mbps) indicate poor network conditions.
+- **`wss is stale`**: Indicates signaling connection issues.
+- **`network-connection interrupted`**: Repeated occurrences suggest network or CPU issues.
+- **`recv/send transport changed to disconnected`**: Complete media disconnect requiring reconnection.
+
+### CPU/Device Constraints
+- **`deviceMemory=[Value]`**: Values of 2 or below indicate potentially insufficient RAM for quality calls.
+- **`framesEncodedPerSec`**: Low values in `outbound-cam-video-XX` tracks indicate encoder struggles.
+- **`unexpected server time offset change (ms) = [Value]`**: Large negative values (>1000ms) can indicate network lag or device clock issues.
+
+### Metrics to Monitor
+- **Bitrate**: Keep overall bandwidth under 3Mbps. Sustained spikes above 3000k indicate overload.
+- **Packet loss**: Sustained loss indicates network struggles; short bursts are recoverable.
+
+### Reference Documentation
+- [Logging and Metrics Guide](https://docs.daily.co/guides/architecture-and-monitoring/logging-and-metrics)
+- [Corporate Firewalls and Networking Guide](https://docs.daily.co/guides/privacy-and-security/corporate-firewalls-nats-allowed-ip-list)
+
+## Network Configuration Troubleshooting
+
+When users report connection issues, verify these network requirements:
+
+### Required Hostnames (Port 443)
+- `*.daily.co` or your Daily subdomain
+- `*.wss.daily.co` for call signaling
+- `b.daily.co` and `c.daily.co` for CDN resources
+- `gs.daily.co` (dispatch server)
+- `prod-ks.pluot.blue` (ICE negotiation)
+
+### WebRTC Media Requirements
+- **STUN**: `stun.cloudflare.com` (UDP/3478, UDP/53), `*.stun.twilio.com`
+- **UDP Direct**: `*.wss.daily.co` (TCP/443, UDP/40000-49999)
+- **TURN Relay**: `turn.cloudflare.com`, `*.turn.twilio.com` (various ports)
+
+### Connection Type Priority
+1. **Direct UDP** (best): Lowest latency, highest throughput
+2. **TURN over UDP/TCP** (good): Small latency addition
+3. **TURN over TLS/443** (fallback): Higher latency but works through restrictive firewalls
+
+### Common Network Problems
+- Users can't load call interface: Check `*.daily.co` access
+- Can't connect to call: Check signaling servers (`*.wss.daily.co`)
+- No audio/video: Check TURN/STUN servers and UDP traffic
+- VPN users: Recommend split tunneling to bypass VPN for Daily traffic
+
+### Diagnostic Tool
+Use Daily's [Network Test page](https://network-test-v2.daily.co/) to diagnose connection problems.
