@@ -58,8 +58,8 @@ const App = () => {
           });
         }
       },
-      [callObject]
-    )
+      [callObject],
+    ),
   );
 
   type PrebuiltAppMessage = DailyEventObjectAppMessage<{
@@ -122,10 +122,9 @@ export const Prebuilt = () => {
       },
       customTrayButtons: {
         "custom-screenshare": {
-          iconPath:
-            "https://www.svgrepo.com/show/532031/cloud-check.svg",
+          iconPath: "https://www.svgrepo.com/show/532036/cloud-rain-alt.svg",
           iconPathDarkMode:
-            "https://www.svgrepo.com/show/532031/cloud-check.svg",
+            "https://www.svgrepo.com/show/532036/cloud-rain-alt.svg",
           label: "Custom Screenshare",
           tooltip: "Start screen share with custom settings",
         },
