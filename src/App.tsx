@@ -7,6 +7,7 @@ import Daily, {
 import {
   DailyAudio,
   DailyVideo,
+  ExtendedDailyParticipant,
   useAudioLevelObserver,
   useCPULoad,
   useDaily,
@@ -19,6 +20,7 @@ import {
   useNetwork,
   useParticipantCounts,
   useParticipantIds,
+  useParticipantProperty,
   useRecording,
   useScreenShare,
   useTranscription,
@@ -61,6 +63,11 @@ const MicVolumeVisualizer = () => {
       `}</style>
     </div>
   );
+};
+
+const ParticipantName = ({ participantId }: { participantId: string }) => {
+  const userName = useParticipantProperty(participantId, "user_name");
+  return <li>{userName}</li>;
 };
 
 export default function App() {
@@ -147,6 +154,18 @@ export default function App() {
     onParticipantLeft: logEvent,
     onParticipantUpdated: logEvent,
     onActiveSpeakerChange: logEvent,
+  });
+
+  const [userNameFilter, setUserNameFilter] = useState("");
+  const filteredParticipantIds = useParticipantIds({
+    filter: useCallback(
+      (p: ExtendedDailyParticipant) => {
+        const { user_name = "" } = p;
+        if (!userNameFilter) return true;
+        return user_name.includes(userNameFilter);
+      },
+      [userNameFilter]
+    ),
   });
 
   const { startTranscription, stopTranscription, isTranscribing } =
@@ -625,6 +644,22 @@ export default function App() {
       <div>
         CPU load: {cpuLoad.state} {cpuLoad.reason}
       </div>
+      <ul>
+        <li>
+          Search for user:{" "}
+          <input
+            type="text"
+            value={userNameFilter}
+            onChange={(event) => {
+              setUserNameFilter(event.target.value);
+            }}
+          />
+        </li>
+
+        {filteredParticipantIds.map((id) => (
+          <ParticipantName participantId={id} key={id} />
+        ))}
+      </ul>
     </>
   );
 }
