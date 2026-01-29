@@ -593,6 +593,28 @@ export default function App() {
         >
           Toggle Transcription
         </button>
+        <br />
+        <button
+          onClick={() => {
+            callObject
+              ?.testCallQuality()
+              .then((res) => {
+                console.log("Test Call Quality Response", res);
+              })
+              .catch((err) => {
+                console.error("Error testing call quality", err);
+              });
+          }}
+        >
+          Test Call Quality
+        </button>
+        <button
+          onClick={() => {
+            callObject?.stopTestCallQuality();
+          }}
+        >
+          Stop Test Call Quality
+        </button>
       </div>
       {participantIds.map((id) => (
         <DailyVideo type="video" key={id} automirror sessionId={id} />
