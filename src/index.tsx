@@ -23,7 +23,12 @@ root.render(
     ) : (
       <DailyProvider
         subscribeToTracksAutomatically={false}
-        dailyConfig={{ useDevicePreferenceCookies: true }}
+        dailyConfig={{
+          useDevicePreferenceCookies: true,
+          micAudioMode: {
+            bitrate: 64_000, // 64kbps, default is 32kbps you can also try 96_000 or 128_000 but 128_000 is probably overkill
+          },
+        }}
       >
         <App />
       </DailyProvider>
