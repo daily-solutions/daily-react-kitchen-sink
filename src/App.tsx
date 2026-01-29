@@ -7,7 +7,9 @@ import Daily, {
 import {
   DailyAudio,
   DailyVideo,
+  ExtendedDailyParticipant,
   useAudioLevelObserver,
+  useAudioTrack,
   useCPULoad,
   useDaily,
   useDailyError,
@@ -121,6 +123,20 @@ export default function App() {
         logEvent({ action: "local-screen-share-stopped" });
       },
     });
+
+  // Select a participant example
+  const botParticipantId = useParticipantIds({
+    filter: useCallback(
+      (p: ExtendedDailyParticipant) => p.user_name === "bot name",
+      []
+    ),
+  })[0];
+
+  console.log("The bot participant id:", botParticipantId);
+
+  const audioTrack = useAudioTrack(botParticipantId);
+
+  console.log("The bot audio track:", audioTrack);
 
   const participantIds = useParticipantIds({
     onParticipantJoined: useCallback(
