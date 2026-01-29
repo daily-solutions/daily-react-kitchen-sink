@@ -1,4 +1,4 @@
-import React, { useCallback, useRef, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import Daily, {
   DailyEventObject,
   DailyEventObjectParticipant,
@@ -22,9 +22,20 @@ import {
   useRecording,
   useScreenShare,
   useTranscription,
+  useScreenVideoTrack,
 } from "@daily-co/daily-react";
 
-import "./styles.css";
+// Experimental / non-standard API type shims (CropTarget + cropTo)
+type CropTarget = object; // opaque handle provided by browser
+interface CropTargetAPI {
+  fromElement(el: Element): Promise<CropTarget>;
+}
+
+declare global {
+  interface Window {
+    CropTarget?: CropTargetAPI;
+  }
+}
 
 console.info("Daily version: %s", Daily.version());
 console.info("Daily supported Browser:");
@@ -67,6 +78,9 @@ export default function App() {
   const callObject = useDaily();
   // @ts-expect-error add callObject to window for debugging
   window.callObject = callObject;
+
+  // Ref for iframe to capture
+  const iframeRef = useRef<HTMLIFrameElement | null>(null);
 
   const [enableBlurClicked, setEnableBlurClicked] = useState(false);
   const [enableBackgroundClicked, setEnableBackgroundClicked] = useState(false);
@@ -121,6 +135,11 @@ export default function App() {
         logEvent({ action: "local-screen-share-stopped" });
       },
     });
+
+  // Local session id & screenVideo track (via daily-react hooks instead of polling)
+  const localSessionId = useLocalSessionId();
+  const { track: localScreenVideoTrack } = useScreenVideoTrack(localSessionId);
+  const hasCroppedRef = useRef(false);
 
   const participantIds = useParticipantIds({
     onParticipantJoined: useCallback(
@@ -343,22 +362,61 @@ export default function App() {
       });
   }, [callObject]);
 
-  const startCustomTrack = useCallback(() => {
-    if (!callObject) {
-      return;
-    }
-    navigator.mediaDevices
-      .getUserMedia({ video: true })
-      .then((customTrack) => {
-        return callObject.startCustomTrack({
-          track: customTrack.getVideoTracks()[0],
-          trackName: "customTrack",
-        });
+  // --- Tab screen share using Daily startScreenShare (instead of custom track) ---
+  const startTabShare = useCallback(() => {
+    if (isSharingScreen) return;
+    startScreenShare({
+      displayMediaOptions: {
+        audio: false,
+        selfBrowserSurface: "include",
+        surfaceSwitching: "include",
+        systemAudio: "exclude",
+        video: true,
+      },
+      screenVideoSendSettings: "motion-and-detail-balanced",
+    });
+  }, [isSharingScreen, startScreenShare]);
+  const stopTabShare = useCallback(() => {
+    stopScreenShare();
+    hasCroppedRef.current = false; // reset for next share
+  }, [stopScreenShare]);
+
+  // Crop effect: runs once when screen share starts and track is available
+  useEffect(() => {
+    if (!isSharingScreen) return;
+    if (hasCroppedRef.current) return; // already cropped this session
+    if (!iframeRef.current) return;
+    const track = localScreenVideoTrack;
+    if (!track) return;
+
+    const cropAPI = (window as unknown as { CropTarget?: CropTargetAPI })
+      .CropTarget;
+    if (!cropAPI?.fromElement) return;
+    cropAPI
+      .fromElement(iframeRef.current)
+      .then((cropTarget) => {
+        interface CroppableTrack extends MediaStreamTrack {
+          cropTo?: (target: CropTarget) => Promise<void>;
+        }
+        const croppable = track as CroppableTrack;
+        if (typeof croppable.cropTo !== "function") {
+          console.warn("cropTo not implemented on this MediaStreamTrack");
+          return;
+        }
+        return croppable
+          .cropTo(cropTarget)
+          .then(() => {
+            hasCroppedRef.current = true;
+            console.log("Cropped screen share to iframe via useMediaTrack");
+          })
+          .catch((err) => {
+            console.error("cropTo failed", err);
+          });
       })
-      .catch((err) => {
-        console.error("Error enabling customTrack", err);
+      .catch((e) => {
+        console.error("Failed to crop screen share", e);
       });
-  }, [callObject]);
+  }, [isSharingScreen, localScreenVideoTrack]);
 
   const load = useCallback(() => {
     if (!callObject) {
@@ -491,7 +549,18 @@ export default function App() {
         </button>
         <br />
         <button onClick={startCamera}>Start Camera</button> <br />
-        <button onClick={startCustomTrack}>Start Custom Track</button>
+        <br />
+        <button
+          onClick={() => {
+            if (isSharingScreen) {
+              stopTabShare();
+            } else {
+              startTabShare();
+            }
+          }}
+        >
+          {isSharingScreen ? "Stop Tab Share" : "Start Tab Share"}
+        </button>
         <br />
         <button disabled={!dailyRoomUrl.length} onClick={joinRoom}>
           Join call
@@ -594,25 +663,34 @@ export default function App() {
           Toggle Transcription
         </button>
       </div>
-      {participantIds.map((id) => (
-        <DailyVideo type="video" key={id} automirror sessionId={id} />
-      ))}
-      {screens.map((screen) => (
-        <DailyVideo
-          type="screenVideo"
-          key={screen.screenId}
-          automirror
-          sessionId={screen.session_id}
+      <div className="share-layout">
+        <iframe
+          ref={iframeRef}
+          id="iframeCustomTrack"
+          title="Daily meeting embed"
+          src="https://www.example.com"
+          width="600"
+          height="400"
+          allow="camera; microphone; display-capture; autoplay; clipboard-write; encrypted-media; fullscreen; picture-in-picture"
+          allowFullScreen
+          loading="eager"
+          style={{ border: 0 }}
         />
-      ))}
-      {participantIds.map((id) => (
-        // @ts-expect-error This works just fine but gives a typescript error
-        <DailyVideo type="customTrack" key={id} automirror sessionId={id} />
-      ))}
-      {rmpParticipantIds.map((id) => (
-        <DailyVideo type="rmpVideo" key={id} automirror sessionId={id} />
-      ))}
-
+        {screens.map((screen) => (
+          <DailyVideo
+            className="screen-share-video"
+            type="screenVideo"
+            key={screen.screenId}
+            automirror
+            sessionId={screen.session_id}
+          />
+        ))}
+      </div>
+      <div className="participants">
+        {participantIds.map((id) => (
+          <DailyVideo type="video" key={id} automirror sessionId={id} />
+        ))}
+      </div>
       <DailyAudio />
       <MicVolumeVisualizer />
       <div id="meetingState">Meeting State: {meetingState}</div>
