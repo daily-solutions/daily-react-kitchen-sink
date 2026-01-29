@@ -5,16 +5,21 @@ import {
   useAppMessage,
   useCallFrame,
   useDaily,
+  useDailyEvent,
   useParticipantCounts,
   useParticipantIds,
+  useScreenShare,
 } from "@daily-co/daily-react";
 import {
   DailyEventObject,
   DailyEventObjectAppMessage,
+  DailyEventObjectCustomButtonClick,
 } from "@daily-co/daily-js";
 
 const App = () => {
   const callObject = useDaily();
+  const { isSharingScreen, startScreenShare, stopScreenShare } =
+    useScreenShare();
 
   // @ts-expect-error debugging
   window.callObject = callObject;
@@ -57,6 +62,39 @@ const App = () => {
     }, []),
   });
 
+  const handleMusicModeScreenShare = useCallback(() => {
+    if (isSharingScreen) {
+      stopScreenShare();
+    } else {
+      startScreenShare({
+        displayMediaOptions: {
+          video: true,
+          audio: {
+            channelCount: 2,
+            sampleRate: 48000,
+            sampleSize: 16,
+            autoGainControl: false,
+            echoCancellation: false,
+            noiseSuppression: false,
+          },
+        },
+      });
+    }
+  }, [isSharingScreen, startScreenShare, stopScreenShare]);
+
+  // Listen for custom button clicks
+  useDailyEvent(
+    "custom-button-click",
+    useCallback(
+      (event: DailyEventObjectCustomButtonClick) => {
+        if (event.button_id === "musicModeScreenShare") {
+          handleMusicModeScreenShare();
+        }
+      },
+      [handleMusicModeScreenShare],
+    ),
+  );
+
   return (
     <>
       <button
@@ -93,6 +131,13 @@ export const Prebuilt = () => {
       },
       userData: {
         avatar: "https://www.svgrepo.com/show/532036/cloud-rain-alt.svg",
+      },
+      customTrayButtons: {
+        musicModeScreenShare: {
+          iconPath: "https://www.svgrepo.com/show/528834/album.svg",
+          label: "Music Share",
+          tooltip: "Share screen with high-quality audio for music",
+        },
       },
     },
     shouldCreateInstance: useCallback(() => Boolean(wrapperRef.current), []),
