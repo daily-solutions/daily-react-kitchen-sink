@@ -166,12 +166,43 @@ export default function App() {
     onCPULoadChange: logEvent,
   });
 
+  const cloudInstanceIdRef = useRef<string | null>(null);
+  const rawTracksInstanceIdRef = useRef<string | null>(null);
+
   const { startRecording, stopRecording, isRecording } = useRecording({
     onRecordingData: logEvent,
     onRecordingError: logEvent,
     onRecordingStarted: logEvent,
     onRecordingStopped: logEvent,
   });
+
+  const startDualRecording = useCallback(() => {
+    const cloudInstanceId = crypto.randomUUID();
+    const rawTracksInstanceId = crypto.randomUUID();
+
+    cloudInstanceIdRef.current = cloudInstanceId;
+    rawTracksInstanceIdRef.current = rawTracksInstanceId;
+
+    startRecording({
+      type: "cloud",
+      instanceId: cloudInstanceId,
+    });
+    startRecording({
+      type: "raw-tracks",
+      instanceId: rawTracksInstanceId,
+    });
+  }, [startRecording]);
+
+  const stopDualRecording = useCallback(() => {
+    if (cloudInstanceIdRef.current) {
+      stopRecording({ instanceId: cloudInstanceIdRef.current });
+      cloudInstanceIdRef.current = null;
+    }
+    if (rawTracksInstanceIdRef.current) {
+      stopRecording({ instanceId: rawTracksInstanceIdRef.current });
+      rawTracksInstanceIdRef.current = null;
+    }
+  }, [stopRecording]);
 
   useDailyEvent("load-attempt-failed", logEvent);
   useDailyEvent("joining-meeting", logEvent);
@@ -575,11 +606,11 @@ export default function App() {
         <br />
         <button onClick={stopCamera}>Camera Off</button>
         <button onClick={updateCameraOn}>Camera On</button> <br />
-        <button disabled={isRecording} onClick={() => startRecording()}>
-          Start Recording
+        <button disabled={isRecording} onClick={startDualRecording}>
+          Start Cloud + Raw-Tracks Recording
         </button>
-        <button disabled={!isRecording} onClick={() => stopRecording()}>
-          Stop Recording
+        <button disabled={!isRecording} onClick={stopDualRecording}>
+          Stop Cloud + Raw-Tracks Recording
         </button>
         <br />
         <button
