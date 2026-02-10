@@ -46,9 +46,57 @@ const logEvent = useCallback((evt: DailyEventObject) => {
 
 **Debugging**: Call object is exposed to `window.callObject` for console debugging.
 
+## Code Style & Patterns
+
+- Use strict TypeScript with proper typing and explicit return types for complex functions
+- Use functional components with hooks; prefer `useCallback` for event handlers
+- Implement proper dependency arrays for `useCallback` and `useEffect`
+- Handle async operations with proper `.catch()` blocks
+- Don't use direct Daily event listeners when hooks are available
+- Avoid blocking UI operations during async Daily.js calls
+
 ## Important Guidelines
 
 - Always upgrade to latest daily-js and daily-react versions before making changes
 - Reference https://docs.daily.co/reference/daily-react when debugging
 - Use Daily's [Network Test](https://network-test-v2.daily.co/) for connection issues
-- Handle async Daily operations with `.catch()` blocks
+- Generate meeting tokens server-side; avoid storing sensitive data in localStorage
+- Use `window.callObject` for console debugging
+
+## Analyzing Daily Call Quality Logs (CSV)
+
+When analyzing exported CSV log files from Daily's Dashboard or `/logs` API:
+
+### Video Quality Issues
+- **`[Track]-videoQualityLimReason`**: Look for `bandwidth`, `cpu`, or `other` values
+- **`[Track]-videoSendFrame`**: Current video resolution being sent
+- **`videoEncoderImpl=ExternalEncoder`**: May indicate hardware acceleration issues
+
+### Network Issues
+- **`Connection downlink`**: Values below 3 Mbps indicate poor network conditions
+- **`wss is stale`**: Signaling connection issues
+- **`network-connection interrupted`**: Repeated occurrences suggest network or CPU issues
+
+### CPU/Device Constraints
+- **`deviceMemory`**: Values of 2 or below indicate insufficient RAM
+- **`framesEncodedPerSec`**: Low values indicate encoder struggles
+
+### Reference Documentation
+- [Logging and Metrics Guide](https://docs.daily.co/guides/architecture-and-monitoring/logging-and-metrics)
+- [Corporate Firewalls Guide](https://docs.daily.co/guides/privacy-and-security/corporate-firewalls-nats-allowed-ip-list)
+
+## Network Configuration Troubleshooting
+
+### Required Hostnames (Port 443)
+- `*.daily.co`, `*.wss.daily.co`, `b.daily.co`, `c.daily.co`, `gs.daily.co`, `prod-ks.pluot.blue`
+
+### WebRTC Media Requirements
+- **STUN**: `stun.cloudflare.com` (UDP/3478, UDP/53), `*.stun.twilio.com`
+- **UDP Direct**: `*.wss.daily.co` (TCP/443, UDP/40000-49999)
+- **TURN Relay**: `turn.cloudflare.com`, `*.turn.twilio.com`
+
+### Common Network Problems
+- Can't load call interface: Check `*.daily.co` access
+- Can't connect: Check `*.wss.daily.co`
+- No audio/video: Check TURN/STUN servers and UDP traffic
+- VPN users: Recommend split tunneling for Daily traffic
