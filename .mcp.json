@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "daily-docs": {
+      "type": "url",
+      "url": "https://daily-docs.mcp.kapa.ai"
+    }
+  }
+}
