@@ -58,7 +58,7 @@ const logEvent = useCallback((evt: DailyEventObject) => {
 ## Important Guidelines
 
 - Always upgrade to latest daily-js and daily-react versions before making changes
-- Reference https://docs.daily.co/reference/daily-react when debugging
+- Always use the `daily-docs` MCP tool (`ask_daily_question`) to search Daily documentation instead of referencing docs.daily.co URLs directly
 - Use Daily's [Network Test](https://network-test-v2.daily.co/) for connection issues
 - Generate meeting tokens server-side; avoid storing sensitive data in localStorage
 - Use `window.callObject` for console debugging
