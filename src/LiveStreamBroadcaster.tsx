@@ -8,7 +8,7 @@ import {
 } from "@daily-co/daily-react";
 import type { DailyEventObjectCustomButtonClick } from "@daily-co/daily-js";
 
-const ICON_URL = "https://www.svgrepo.com/show/532169/broadcast.svg";
+const ICON_URL = "https://api.iconify.design/mdi/broadcast.svg?color=%23000000";
 
 const LiveStreamControls = ({ hlsEndpoint }: { hlsEndpoint: string }) => {
   const callObject = useDaily();
@@ -82,8 +82,8 @@ export const LiveStreamBroadcaster = () => {
   useEffect(() => {
     if (!callFrame) return;
     callFrame.join().catch((err: unknown) => {
-        console.error("Error joining call", err);
-      });
+      console.error("Error joining call", err);
+    });
   }, [callFrame]);
 
   if (!joined) {
