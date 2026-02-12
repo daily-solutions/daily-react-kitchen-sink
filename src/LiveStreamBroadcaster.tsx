@@ -26,8 +26,8 @@ const LiveStreamControls = ({ hlsEndpoint }: { hlsEndpoint: string }) => {
           startLiveStreaming({ endpoints: [{ endpoint: hlsEndpoint }] });
         }
       },
-      [isLiveStreaming, hlsEndpoint, startLiveStreaming, stopLiveStreaming]
-    )
+      [isLiveStreaming, hlsEndpoint, startLiveStreaming, stopLiveStreaming],
+    ),
   );
 
   useEffect(() => {
@@ -75,15 +75,15 @@ export const LiveStreamBroadcaster = () => {
     },
     shouldCreateInstance: useCallback(
       () => joined && Boolean(wrapperRef.current),
-      [joined]
+      [joined],
     ),
   });
 
   useEffect(() => {
     if (!callFrame) return;
     callFrame.join().catch((err: unknown) => {
-      console.error("Error joining call", err);
-    });
+        console.error("Error joining call", err);
+      });
   }, [callFrame]);
 
   if (!joined) {
