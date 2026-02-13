@@ -72,6 +72,9 @@ export default function App() {
   const [enableBackgroundClicked, setEnableBackgroundClicked] = useState(false);
   const [dailyRoomUrl, setDailyRoomUrl] = useState("");
   const [dailyMeetingToken, setDailyMeetingToken] = useState("");
+  const [screenShareQuality, setScreenShareQuality] = useState<
+    "480p" | "720p" | "1080p" | "default"
+  >("720p");
 
   const {
     cameraError,
@@ -111,16 +114,105 @@ export default function App() {
   const noiseCancellationEnabled =
     inputSettings?.audio?.processor?.type === "noise-cancellation";
 
-  const { startScreenShare, stopScreenShare, screens, isSharingScreen } =
-    useScreenShare({
-      onError: logEvent,
-      onLocalScreenShareStarted: () => {
-        logEvent({ action: "local-screen-share-started" });
-      },
-      onLocalScreenShareStopped: () => {
-        logEvent({ action: "local-screen-share-stopped" });
-      },
+  const { stopScreenShare, screens, isSharingScreen } = useScreenShare({
+    onError: logEvent,
+    onLocalScreenShareStarted: () => {
+      logEvent({ action: "local-screen-share-started" });
+    },
+    onLocalScreenShareStopped: () => {
+      logEvent({ action: "local-screen-share-stopped" });
+    },
+  });
+
+  const startCustomScreenShare = useCallback(() => {
+    if (!callObject) {
+      return;
+    }
+
+    // Define send settings based on selected quality
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    let screenVideoSendSettings: any;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    let displayMediaOptions: any;
+
+    switch (screenShareQuality) {
+      case "480p":
+        displayMediaOptions = {
+          video: {
+            width: { ideal: 854 },
+            height: { ideal: 480 },
+            frameRate: { ideal: 15 },
+          },
+          audio: true,
+        };
+        screenVideoSendSettings = {
+          low: {
+            maxBitrate: 600000, // 600 kbps for 480p
+            maxFramerate: 15,
+            scaleResolutionDownBy: 1, // Full 854x480 resolution
+          },
+          maxQuality: "low", // Only send the low layer
+        };
+        break;
+      case "720p":
+        displayMediaOptions = {
+          video: {
+            width: { ideal: 1280 },
+            height: { ideal: 720 },
+            frameRate: { ideal: 30 },
+          },
+          audio: true,
+        };
+        screenVideoSendSettings = {
+          low: {
+            maxBitrate: 1200000, // 1.2 Mbps
+            maxFramerate: 30,
+            scaleResolutionDownBy: 1, // Full 1280x720 resolution
+          },
+          maxQuality: "low", // Only send the low layer
+        };
+        break;
+      case "1080p":
+        displayMediaOptions = {
+          video: {
+            width: { ideal: 1920 },
+            height: { ideal: 1080 },
+            frameRate: { ideal: 30 },
+          },
+          audio: true,
+        };
+        screenVideoSendSettings = {
+          low: {
+            maxBitrate: 2500000, // 2.5 Mbps for 1080p
+            maxFramerate: 30,
+            scaleResolutionDownBy: 1, // Full 1920x1080 resolution
+          },
+          maxQuality: "low", // Only send the low layer
+        };
+        break;
+      default:
+        // Use default Daily settings
+        displayMediaOptions = undefined;
+        screenVideoSendSettings = "motion-optimized";
+        break;
+    }
+
+    console.log(`Starting screen share with ${screenShareQuality} quality`, {
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
+      displayMediaOptions,
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
+      screenVideoSendSettings,
     });
+
+    // Use the call object directly to start screen share with custom settings
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
+    callObject.startScreenShare({
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
+      displayMediaOptions,
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
+      screenVideoSendSettings,
+    });
+  }, [callObject, screenShareQuality]);
 
   const participantIds = useParticipantIds({
     onParticipantJoined: useCallback(
@@ -560,17 +652,34 @@ export default function App() {
           Toggle Krisp
         </button>
         <br />
+        <div>
+          Screen Share Quality:
+          <select
+            value={screenShareQuality}
+            onChange={(e) =>
+              setScreenShareQuality(
+                e.target.value as "480p" | "720p" | "1080p" | "default"
+              )
+            }
+          >
+            <option value="480p">480p (854x480) - Low Bandwidth</option>
+            <option value="720p">720p (1280x720)</option>
+            <option value="1080p">1080p (1920x1080)</option>
+            <option value="default">Default (Motion Optimized)</option>
+          </select>
+        </div>
         <button
-          disabled={isSharingScreen}
           onClick={() => {
             if (isSharingScreen) {
               stopScreenShare();
             } else {
-              startScreenShare();
+              startCustomScreenShare();
             }
           }}
         >
-          Toggle Screen Share
+          {isSharingScreen
+            ? "Stop Screen Share"
+            : `Start Screen Share (${screenShareQuality})`}
         </button>
         <br />
         <button onClick={stopCamera}>Camera Off</button>
@@ -624,6 +733,10 @@ export default function App() {
       <div>Network quality: {network.quality}</div>
       <div>
         CPU load: {cpuLoad.state} {cpuLoad.reason}
+      </div>
+      <div>
+        Screen Share Quality: {screenShareQuality}
+        {isSharingScreen && " (Active)"}
       </div>
     </>
   );
