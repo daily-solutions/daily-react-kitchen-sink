@@ -4,7 +4,11 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-A Daily.js React demo that logs every Daily event to the console, useful for debugging and understanding event flow. Serves as a reference implementation for Daily React integration.
+A Daily.js React demo that logs every Daily event to the console, useful for debugging and understanding event flow. Serves as a reference implementation for Daily React and daily-js integrations.
+
+## Branching Strategy
+
+Each branch is a separate demo. When a new demo is requested, create a new branch (e.g., `live-streaming-demo`, `virtual-background-demo`). The `main` branch contains the base reference implementation.
 
 ## Commands
 
