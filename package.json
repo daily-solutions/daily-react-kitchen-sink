@@ -17,6 +17,7 @@
     "react-dom": "^19.1.1"
   },
   "scripts": {
+    "download": "node --experimental-strip-types src/download-script.ts",
     "dev": "vite --host",
     "build": "tsc && vite build",
     "serve": "vite preview",
