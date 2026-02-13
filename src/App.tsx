@@ -42,7 +42,7 @@ const MicVolumeVisualizer = () => {
       // this volume number will be between 0 and 1
       // give it a minimum scale of 0.15 to not completely disappear 👻
       volRef.current.style.transform = `scale(${Math.max(0.15, volume)})`;
-    }, [])
+    }, []),
   );
 
   // Your audio track's audio volume visualized in a small circle,
@@ -70,10 +70,12 @@ export default function App() {
 
   const [enableBlurClicked, setEnableBlurClicked] = useState(false);
   const [enableBackgroundClicked, setEnableBackgroundClicked] = useState(false);
-  const [dailyRoomUrl, setDailyRoomUrl] = useState("");
+  const [dailyRoomUrl, setDailyRoomUrl] = useState(
+    "https://hush.daily.co/demo",
+  );
   const [dailyMeetingToken, setDailyMeetingToken] = useState("");
   const [trackSettings, setTrackSettings] = useState<MediaTrackSettings | null>(
-    null
+    null,
   );
 
   const {
@@ -145,7 +147,7 @@ export default function App() {
           },
         });
       },
-      [callObject, logEvent]
+      [callObject, logEvent],
     ),
     onParticipantLeft: logEvent,
     onParticipantUpdated: logEvent,
@@ -286,8 +288,8 @@ export default function App() {
         logEvent(ev);
         setIsRemoteMediaPlayerStarted(true);
       },
-      [logEvent, setIsRemoteMediaPlayerStarted]
-    )
+      [logEvent, setIsRemoteMediaPlayerStarted],
+    ),
   );
   useDailyEvent(
     "remote-media-player-started",
@@ -297,8 +299,8 @@ export default function App() {
         logEvent(ev);
         setIsRemoteMediaPlayerStarted(true);
       },
-      [logEvent, setIsRemoteMediaPlayerStarted]
-    )
+      [logEvent, setIsRemoteMediaPlayerStarted],
+    ),
   );
   useDailyEvent("remote-media-player-updated", logEvent);
 
@@ -428,7 +430,7 @@ export default function App() {
         console.error("Error setting camera", err);
       });
     },
-    [setCamera]
+    [setCamera],
   );
 
   // change mic device
@@ -438,7 +440,7 @@ export default function App() {
         console.error("Error setting microphone", err);
       });
     },
-    [setMicrophone]
+    [setMicrophone],
   );
 
   // change speaker device
@@ -448,7 +450,7 @@ export default function App() {
         console.error("Error setting speaker", err);
       });
     },
-    [setSpeaker]
+    [setSpeaker],
   );
 
   const stopCamera = useCallback(() => {
