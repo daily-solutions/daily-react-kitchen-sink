@@ -11,6 +11,7 @@
     "@daily-co/daily-js": "^0.83.1",
     "@daily-co/daily-react": "^0.23.2",
     "@vitejs/plugin-react-swc": "^3.7.2",
+    "hls.js": "^1.6.15",
     "html2canvas": "^1.4.1",
     "jotai": "^2.12.5",
     "react": "^19.1.1",
