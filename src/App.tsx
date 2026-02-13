@@ -72,6 +72,9 @@ export default function App() {
   const [enableBackgroundClicked, setEnableBackgroundClicked] = useState(false);
   const [dailyRoomUrl, setDailyRoomUrl] = useState("");
   const [dailyMeetingToken, setDailyMeetingToken] = useState("");
+  const [trackSettings, setTrackSettings] = useState<MediaTrackSettings | null>(
+    null
+  );
 
   const {
     cameraError,
@@ -253,6 +256,19 @@ export default function App() {
       console.error("Error enabling Krisp", err);
     });
   }, [callObject, noiseCancellationEnabled, updateInputSettings]);
+
+  const readTrackSettings = useCallback(() => {
+    if (!callObject) return;
+    const audioTrack =
+      callObject.participants()?.local?.tracks?.audio?.persistentTrack;
+    if (!audioTrack) {
+      console.log("No audio track available yet");
+      return;
+    }
+    const settings = audioTrack.getSettings();
+    setTrackSettings(settings);
+    console.log("Actual audio track settings:", settings);
+  }, [callObject]);
 
   const rmpParticipantIds = useParticipantIds({
     sort: "joined_at",
@@ -560,6 +576,94 @@ export default function App() {
           Toggle Krisp
         </button>
         <br />
+        <hr />
+        <b>Audio Processing Constraints (set in DailyProvider)</b>
+        <br />
+        <p>
+          echoCancellation, noiseSuppression, and autoGainControl are set to{" "}
+          <code>false</code> via <code>inputSettings</code>. Click below to
+          verify what the browser actually applied.
+        </p>
+        <button onClick={readTrackSettings}>Read Actual Track Settings</button>
+        {trackSettings && (
+          <table
+            style={{
+              margin: "10px auto",
+              borderCollapse: "collapse",
+              textAlign: "left",
+            }}
+          >
+            <thead>
+              <tr>
+                <th style={{ border: "1px solid #ddd", padding: "8px" }}>
+                  Setting
+                </th>
+                <th style={{ border: "1px solid #ddd", padding: "8px" }}>
+                  Requested
+                </th>
+                <th style={{ border: "1px solid #ddd", padding: "8px" }}>
+                  Actual
+                </th>
+                <th style={{ border: "1px solid #ddd", padding: "8px" }}>
+                  Match?
+                </th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td style={{ border: "1px solid #ddd", padding: "8px" }}>
+                  echoCancellation
+                </td>
+                <td style={{ border: "1px solid #ddd", padding: "8px" }}>
+                  false
+                </td>
+                <td style={{ border: "1px solid #ddd", padding: "8px" }}>
+                  {String(trackSettings.echoCancellation ?? "N/A")}
+                </td>
+                <td style={{ border: "1px solid #ddd", padding: "8px" }}>
+                  {trackSettings.echoCancellation === false ? "Yes" : "NO"}
+                </td>
+              </tr>
+              <tr>
+                <td style={{ border: "1px solid #ddd", padding: "8px" }}>
+                  noiseSuppression
+                </td>
+                <td style={{ border: "1px solid #ddd", padding: "8px" }}>
+                  false
+                </td>
+                <td style={{ border: "1px solid #ddd", padding: "8px" }}>
+                  {String(trackSettings.noiseSuppression ?? "N/A")}
+                </td>
+                <td style={{ border: "1px solid #ddd", padding: "8px" }}>
+                  {trackSettings.noiseSuppression === false ? "Yes" : "NO"}
+                </td>
+              </tr>
+              <tr>
+                <td style={{ border: "1px solid #ddd", padding: "8px" }}>
+                  autoGainControl
+                </td>
+                <td style={{ border: "1px solid #ddd", padding: "8px" }}>
+                  false
+                </td>
+                <td style={{ border: "1px solid #ddd", padding: "8px" }}>
+                  {String(trackSettings.autoGainControl ?? "N/A")}
+                </td>
+                <td style={{ border: "1px solid #ddd", padding: "8px" }}>
+                  {trackSettings.autoGainControl === false ? "Yes" : "NO"}
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        )}
+        {trackSettings && (
+          <details style={{ maxWidth: "600px", margin: "0 auto" }}>
+            <summary>Full track settings (JSON)</summary>
+            <pre style={{ textAlign: "left", overflow: "auto" }}>
+              {JSON.stringify(trackSettings, null, 2)}
+            </pre>
+          </details>
+        )}
+        <hr />
         <button
           disabled={isSharingScreen}
           onClick={() => {

@@ -24,6 +24,15 @@ root.render(
       <DailyProvider
         subscribeToTracksAutomatically={false}
         dailyConfig={{ useDevicePreferenceCookies: true }}
+        inputSettings={{
+          audio: {
+            settings: {
+              echoCancellation: false,
+              noiseSuppression: false,
+              autoGainControl: false,
+            },
+          },
+        }}
       >
         <App />
       </DailyProvider>
