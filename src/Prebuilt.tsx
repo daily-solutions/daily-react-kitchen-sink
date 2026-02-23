@@ -136,6 +136,8 @@ export const Prebuilt = () => {
         useDevicePreferenceCookies: true,
       },
       url: "https://hush.daily.co/demo",
+      token:
+        "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJvIjp0cnVlLCJyIjoiZGVtbyIsImQiOiI2ODNiODlmNC1iMWZkLTRmOTQtYjg0NS1lZjI2NjZlM2UyMTMiLCJpYXQiOjE3NzE4MTgwMjV9.NgoqiZV3vumDX1RFFjqW1UiaXqqdPoky3_MzLIC-GoU",
       iframeStyle: {
         width: "100%",
         height: "80vh",
@@ -145,9 +147,10 @@ export const Prebuilt = () => {
       },
       customTrayButtons: {
         transcription: {
-          iconPath: "https://www.svgrepo.com/show/529657/chat-round-dots.svg",
+          iconPath:
+            "https://cdn.jsdelivr.net/npm/heroicons@2.1.1/24/outline/chat-bubble-bottom-center-text.svg",
           iconPathDarkMode:
-            "https://www.svgrepo.com/show/529657/chat-round-dots.svg",
+            "https://cdn.jsdelivr.net/npm/heroicons@2.1.1/24/outline/chat-bubble-bottom-center-text.svg",
           label: "Transcribe",
           tooltip: "Toggle multi-language transcription",
         },
