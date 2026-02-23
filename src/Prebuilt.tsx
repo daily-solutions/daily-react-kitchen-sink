@@ -2,15 +2,16 @@ import "./styles.css";
 import { useCallback, useEffect, useRef } from "react";
 import {
   DailyProvider,
-  useAppMessage,
   useCallFrame,
   useDaily,
+  useDailyEvent,
   useParticipantCounts,
   useParticipantIds,
+  useTranscription,
 } from "@daily-co/daily-react";
 import {
   DailyEventObject,
-  DailyEventObjectAppMessage,
+  DailyEventObjectCustomButtonClick,
 } from "@daily-co/daily-js";
 
 const App = () => {
@@ -36,42 +37,90 @@ const App = () => {
     onParticipantUpdated: logEvent,
   });
 
-  type PrebuiltAppMessage = DailyEventObjectAppMessage<{
-    date: string;
-    event: "chat-msg"; // There's other events too
-    message: string;
-    name: string;
-    room: string;
-  }>;
+  const { startTranscription, stopTranscription, isTranscribing, transcriptions } =
+    useTranscription({
+      onTranscriptionStarted: logEvent,
+      onTranscriptionStopped: logEvent,
+      onTranscriptionError: logEvent,
+      onTranscriptionMessage: logEvent,
+    });
 
-  const sendAppMessage = useAppMessage({
-    onAppMessage: useCallback((message: PrebuiltAppMessage) => {
-      console.log(message);
-      switch (message.data.event) {
-        case "chat-msg":
-          console.log("Chat message:", message.data.message);
-          break;
-        default:
-          console.log("Unknown event:", message.data.event);
-      }
-    }, []),
-  });
+  useDailyEvent(
+    "custom-button-click",
+    useCallback(
+      (evt: DailyEventObjectCustomButtonClick) => {
+        if (evt.button_id === "transcription") {
+          if (isTranscribing) {
+            stopTranscription();
+          } else {
+            startTranscription({
+              language: "multi",
+              model: "nova-2-general",
+              profanity_filter: true,
+              punctuate: true,
+              includeRawResponse: true,
+              extra: {
+                interim_results: true,
+              },
+            });
+          }
+        }
+      },
+      [isTranscribing, startTranscription, stopTranscription]
+    )
+  );
+
+  const panelRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (panelRef.current) {
+      panelRef.current.scrollTop = panelRef.current.scrollHeight;
+    }
+  }, [transcriptions]);
 
   return (
     <>
-      <button
-        onClick={() =>
-          sendAppMessage({
-            event: "chat-msg",
-            date: Date.now().toString(),
-            message: "Hello from button!",
-            name: "button",
-            room: "main-room",
-          })
-        }
+      <div
+        ref={panelRef}
+        style={{
+          maxHeight: 300,
+          overflowY: "auto",
+          border: "1px solid #e0e0e0",
+          borderRadius: 8,
+          margin: 16,
+          padding: 16,
+          background: "#fafafa",
+          fontFamily: "sans-serif",
+        }}
       >
-        Send message
-      </button>
+        <h3 style={{ margin: "0 0 12px 0", fontSize: 16, color: "#333" }}>
+          Multi-Language Transcription {isTranscribing ? "(Active)" : "(Inactive)"}
+        </h3>
+        {transcriptions.length === 0 && (
+          <p style={{ color: "#888", fontStyle: "italic", fontSize: 14 }}>
+            {isTranscribing
+              ? "Listening for speech..."
+              : "Click the Transcribe button in the call tray to start."}
+          </p>
+        )}
+        {transcriptions.map((t, index) => (
+          <div
+            key={`${t.session_id}-${t.timestamp}-${index}`}
+            style={{
+              marginBottom: 8,
+              paddingBottom: 4,
+              borderBottom: "1px solid #f0f0f0",
+              fontSize: 14,
+              lineHeight: 1.4,
+            }}
+          >
+            <span style={{ fontWeight: 600, color: "#1a73e8" }}>
+              {t.user_name ?? t.user_id}:
+            </span>{" "}
+            <span style={{ color: "#333" }}>{t.text}</span>
+          </div>
+        ))}
+      </div>
       <span>{participantCount.present} participants</span>
     </>
   );
@@ -93,6 +142,15 @@ export const Prebuilt = () => {
       },
       userData: {
         avatar: "https://www.svgrepo.com/show/532036/cloud-rain-alt.svg",
+      },
+      customTrayButtons: {
+        transcription: {
+          iconPath: "https://www.svgrepo.com/show/529657/chat-round-dots.svg",
+          iconPathDarkMode:
+            "https://www.svgrepo.com/show/529657/chat-round-dots.svg",
+          label: "Transcribe",
+          tooltip: "Toggle multi-language transcription",
+        },
       },
     },
     shouldCreateInstance: useCallback(() => Boolean(wrapperRef.current), []),
