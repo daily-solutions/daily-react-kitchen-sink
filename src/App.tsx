@@ -2,6 +2,7 @@ import React, { useCallback, useRef, useState } from "react";
 import Daily, {
   DailyEventObject,
   DailyEventObjectParticipant,
+  DailyEventObjectParticipantLeft,
 } from "@daily-co/daily-js";
 
 import {
@@ -19,6 +20,8 @@ import {
   useNetwork,
   useParticipantCounts,
   useParticipantIds,
+  useParticipantProperty,
+  usePermissions,
   useRecording,
   useScreenShare,
   useTranscription,
@@ -29,6 +32,46 @@ import "./styles.css";
 console.info("Daily version: %s", Daily.version());
 console.info("Daily supported Browser:");
 console.dir(Daily.supportedBrowser());
+
+const ParticipantTile = ({
+  id,
+  localSessionId,
+  canAdminParticipants,
+  onEject,
+  onBan,
+}: {
+  id: string;
+  localSessionId: string;
+  canAdminParticipants: boolean;
+  onEject: (sessionId: string, name: string) => void;
+  onBan: (sessionId: string, name: string, userId?: string) => void;
+}) => {
+  const userName = useParticipantProperty(id, "user_name");
+  const userId = useParticipantProperty(id, "user_id");
+  const displayName = userName ?? id;
+
+  return (
+    <div className="participant-tile">
+      <DailyVideo type="video" automirror sessionId={id} />
+      {canAdminParticipants && id !== localSessionId && (
+        <>
+          <button
+            className="eject-btn"
+            onClick={() => onEject(id, displayName)}
+          >
+            Eject
+          </button>
+          <button
+            className="eject-btn ban-btn"
+            onClick={() => onBan(id, displayName, userId)}
+          >
+            Ban
+          </button>
+        </>
+      )}
+    </div>
+  );
+};
 
 const MicVolumeVisualizer = () => {
   const localSessionId = useLocalSessionId();
@@ -42,7 +85,7 @@ const MicVolumeVisualizer = () => {
       // this volume number will be between 0 and 1
       // give it a minimum scale of 0.15 to not completely disappear 👻
       volRef.current.style.transform = `scale(${Math.max(0.15, volume)})`;
-    }, [])
+    }, []),
   );
 
   // Your audio track's audio volume visualized in a small circle,
@@ -72,6 +115,7 @@ export default function App() {
   const [enableBackgroundClicked, setEnableBackgroundClicked] = useState(false);
   const [dailyRoomUrl, setDailyRoomUrl] = useState("");
   const [dailyMeetingToken, setDailyMeetingToken] = useState("");
+  const [dailyApiKey, setDailyApiKey] = useState("");
 
   const {
     cameraError,
@@ -142,7 +186,7 @@ export default function App() {
           },
         });
       },
-      [callObject, logEvent]
+      [callObject, logEvent],
     ),
     onParticipantLeft: logEvent,
     onParticipantUpdated: logEvent,
@@ -194,6 +238,111 @@ export default function App() {
   if (nonFatalError) {
     logEvent(nonFatalError);
   }
+
+  // --- Eject / Ban Participant ---
+  const localSessionId = useLocalSessionId();
+  const { canAdminParticipants } = usePermissions();
+
+  const ejectParticipant = useCallback(
+    (sessionId: string, participantName: string) => {
+      if (!callObject) return;
+      callObject.updateParticipant(sessionId, { eject: true });
+      console.log(`Ejected participant: ${participantName} (${sessionId})`);
+    },
+    [callObject],
+  );
+
+  // Ban a participant: eject them client-side, then call the REST API to
+  // prevent them from rejoining. Requires a Daily API key.
+  const banParticipant = useCallback(
+    (sessionId: string, participantName: string, userId?: string) => {
+      console.log("banParticipant called", {
+        sessionId,
+        participantName,
+        callObject: !!callObject,
+        dailyRoomUrl,
+        dailyApiKey: !!dailyApiKey,
+      });
+      if (!callObject) return;
+
+      const roomName = dailyRoomUrl.split("/").pop();
+      if (!roomName) {
+        console.error("Could not extract room name from URL:", dailyRoomUrl);
+        return;
+      }
+
+      if (!dailyApiKey) {
+        // No API key — fall back to client-side eject only
+        callObject.updateParticipant(sessionId, { eject: true });
+        console.warn(
+          "No API key provided — participant was ejected but not banned. " +
+            "Enter a Daily API key to enable banning.",
+        );
+        return;
+      }
+
+      if (!userId) {
+        console.warn(
+          "Participant has no user_id — ban won't prevent rejoining. " +
+            "Use meeting tokens with a user_id for effective banning.",
+        );
+      }
+
+      // Always use session ids to eject. Additionally include user_ids
+      // for the ban — banning only persists for user_ids set via meeting tokens.
+      const body: { ids: string[]; user_ids?: string[]; ban: boolean } = {
+        ids: [sessionId],
+        ban: true,
+      };
+      if (userId && userId !== sessionId) {
+        body.user_ids = [userId];
+      }
+
+      console.log("banParticipant REST API request", { roomName, body });
+
+      fetch(`https://api.daily.co/v1/rooms/${roomName}/eject`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${dailyApiKey}`,
+        },
+        body: JSON.stringify(body),
+      })
+        .then((res) => {
+          if (!res.ok) {
+            return res.json().then((err) => {
+              console.error("Ban API error:", err);
+            });
+          }
+          return res.json().then((data) => {
+            console.log(
+              `Banned participant: ${participantName} (${sessionId})`,
+              data,
+            );
+          });
+        })
+        .catch((err) => {
+          console.error("Error calling ban API:", err);
+        });
+    },
+    [callObject, dailyRoomUrl, dailyApiKey],
+  );
+
+  // Log participant-left events with reason to confirm ejections
+  useDailyEvent(
+    "participant-left",
+    useCallback((ev: DailyEventObjectParticipantLeft) => {
+      if (!ev) return;
+      const reason = (
+        ev as DailyEventObjectParticipantLeft & { reason?: string }
+      ).reason;
+      if (reason) {
+        console.log(
+          `Participant left: ${ev.participant.user_name ?? ev.participant.session_id} — reason: ${reason}`,
+        );
+      }
+    }, []),
+  );
 
   const enableBlur = useCallback(() => {
     if (!callObject || enableBlurClicked) {
@@ -270,8 +419,8 @@ export default function App() {
         logEvent(ev);
         setIsRemoteMediaPlayerStarted(true);
       },
-      [logEvent, setIsRemoteMediaPlayerStarted]
-    )
+      [logEvent, setIsRemoteMediaPlayerStarted],
+    ),
   );
   useDailyEvent(
     "remote-media-player-started",
@@ -281,8 +430,8 @@ export default function App() {
         logEvent(ev);
         setIsRemoteMediaPlayerStarted(true);
       },
-      [logEvent, setIsRemoteMediaPlayerStarted]
-    )
+      [logEvent, setIsRemoteMediaPlayerStarted],
+    ),
   );
   useDailyEvent("remote-media-player-updated", logEvent);
 
@@ -412,7 +561,7 @@ export default function App() {
         console.error("Error setting camera", err);
       });
     },
-    [setCamera]
+    [setCamera],
   );
 
   // change mic device
@@ -422,7 +571,7 @@ export default function App() {
         console.error("Error setting microphone", err);
       });
     },
-    [setMicrophone]
+    [setMicrophone],
   );
 
   // change speaker device
@@ -432,7 +581,7 @@ export default function App() {
         console.error("Error setting speaker", err);
       });
     },
-    [setSpeaker]
+    [setSpeaker],
   );
 
   const stopCamera = useCallback(() => {
@@ -482,6 +631,17 @@ export default function App() {
           value={dailyMeetingToken}
           onChange={(event) => {
             setDailyMeetingToken(event.target.value);
+          }}
+        />
+        <br />
+        3. Daily API key (optional, required for banning participants).
+        <br />
+        <input
+          type="password"
+          value={dailyApiKey}
+          placeholder="Daily API key"
+          onChange={(event) => {
+            setDailyApiKey(event.target.value);
           }}
         />
         <br />
@@ -595,7 +755,14 @@ export default function App() {
         </button>
       </div>
       {participantIds.map((id) => (
-        <DailyVideo type="video" key={id} automirror sessionId={id} />
+        <ParticipantTile
+          key={id}
+          id={id}
+          localSessionId={localSessionId}
+          canAdminParticipants={canAdminParticipants}
+          onEject={ejectParticipant}
+          onBan={banParticipant}
+        />
       ))}
       {screens.map((screen) => (
         <DailyVideo
