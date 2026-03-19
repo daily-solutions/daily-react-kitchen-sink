@@ -20,6 +20,7 @@ import {
   useNetwork,
   useParticipantCounts,
   useParticipantIds,
+  useParticipantProperty,
   usePermissions,
   useRecording,
   useScreenShare,
@@ -31,6 +32,46 @@ import "./styles.css";
 console.info("Daily version: %s", Daily.version());
 console.info("Daily supported Browser:");
 console.dir(Daily.supportedBrowser());
+
+const ParticipantTile = ({
+  id,
+  localSessionId,
+  canAdminParticipants,
+  onEject,
+  onBan,
+}: {
+  id: string;
+  localSessionId: string;
+  canAdminParticipants: boolean;
+  onEject: (sessionId: string, name: string) => void;
+  onBan: (sessionId: string, name: string, userId?: string) => void;
+}) => {
+  const userName = useParticipantProperty(id, "user_name");
+  const userId = useParticipantProperty(id, "user_id");
+  const displayName = userName ?? id;
+
+  return (
+    <div className="participant-tile">
+      <DailyVideo type="video" automirror sessionId={id} />
+      {canAdminParticipants && id !== localSessionId && (
+        <>
+          <button
+            className="eject-btn"
+            onClick={() => onEject(id, displayName)}
+          >
+            Eject
+          </button>
+          <button
+            className="eject-btn ban-btn"
+            onClick={() => onBan(id, displayName, userId)}
+          >
+            Ban
+          </button>
+        </>
+      )}
+    </div>
+  );
+};
 
 const MicVolumeVisualizer = () => {
   const localSessionId = useLocalSessionId();
@@ -214,7 +255,7 @@ export default function App() {
   // Ban a participant: eject them client-side, then call the REST API to
   // prevent them from rejoining. Requires a Daily API key.
   const banParticipant = useCallback(
-    (sessionId: string, participantName: string) => {
+    (sessionId: string, participantName: string, userId?: string) => {
       console.log("banParticipant called", {
         sessionId,
         participantName,
@@ -223,13 +264,6 @@ export default function App() {
         dailyApiKey: !!dailyApiKey,
       });
       if (!callObject) return;
-
-      const participant = callObject.participants()?.[sessionId];
-      const userId = participant?.user_id;
-      console.log("banParticipant participant lookup", {
-        participant: !!participant,
-        userId,
-      });
 
       const roomName = dailyRoomUrl.split("/").pop();
       if (!roomName) {
@@ -721,33 +755,14 @@ export default function App() {
         </button>
       </div>
       {participantIds.map((id) => (
-        <div key={id} className="participant-tile">
-          <DailyVideo type="video" automirror sessionId={id} />
-          {canAdminParticipants && id !== localSessionId && (
-            <>
-              <button
-                className="eject-btn"
-                onClick={() => {
-                  const participants = callObject?.participants();
-                  const name = participants?.[id]?.user_name ?? id;
-                  ejectParticipant(id, name);
-                }}
-              >
-                Eject
-              </button>
-              <button
-                className="eject-btn ban-btn"
-                onClick={() => {
-                  const participants = callObject?.participants();
-                  const name = participants?.[id]?.user_name ?? id;
-                  banParticipant(id, name);
-                }}
-              >
-                Ban
-              </button>
-            </>
-          )}
-        </div>
+        <ParticipantTile
+          key={id}
+          id={id}
+          localSessionId={localSessionId}
+          canAdminParticipants={canAdminParticipants}
+          onEject={ejectParticipant}
+          onBan={banParticipant}
+        />
       ))}
       {screens.map((screen) => (
         <DailyVideo
