@@ -73,8 +73,8 @@ export default function App() {
   const [enableBlurClicked, setEnableBlurClicked] = useState(false);
   const [enableBackgroundClicked, setEnableBackgroundClicked] = useState(false);
   const [dailyRoomUrl, setDailyRoomUrl] = useState("");
-  const [dailyMeetingToken, setDailyMeetingToken] = useState("");
-  const [dailyApiKey, setDailyApiKey] = useState("");
+  const [dailyMeetingToken, setDailyMeetingToken] = useState((import.meta.env.VITE_DAILY_MEETING_TOKEN as string) ?? "");
+  const [dailyApiKey, setDailyApiKey] = useState((import.meta.env.VITE_DAILY_API_KEY as string) ?? "");
 
   const {
     cameraError,
@@ -215,13 +215,12 @@ export default function App() {
   // prevent them from rejoining. Requires a Daily API key.
   const banParticipant = useCallback(
     (sessionId: string, participantName: string) => {
+      console.log("banParticipant called", { sessionId, participantName, callObject: !!callObject, dailyRoomUrl, dailyApiKey: !!dailyApiKey });
       if (!callObject) return;
 
       const participant = callObject.participants()?.[sessionId];
       const userId = participant?.user_id;
-
-      callObject.updateParticipant(sessionId, { eject: true });
-      console.log(`Ejected participant: ${participantName} (${sessionId})`);
+      console.log("banParticipant participant lookup", { participant: !!participant, userId });
 
       const roomName = dailyRoomUrl.split("/").pop();
       if (!roomName) {
@@ -230,6 +229,8 @@ export default function App() {
       }
 
       if (!dailyApiKey) {
+        // No API key — fall back to client-side eject only
+        callObject.updateParticipant(sessionId, { eject: true });
         console.warn(
           "No API key provided — participant was ejected but not banned. " +
             "Enter a Daily API key to enable banning."
@@ -237,14 +238,24 @@ export default function App() {
         return;
       }
 
-      const body: { ids?: string[]; user_ids?: string[]; ban: boolean } = {
+      if (!userId) {
+        console.warn(
+          "Participant has no user_id — ban won't prevent rejoining. " +
+            "Use meeting tokens with a user_id for effective banning."
+        );
+      }
+
+      // Always use session ids to eject. Additionally include user_ids
+      // for the ban — banning only persists for user_ids set via meeting tokens.
+      const body: { ids: string[]; user_ids?: string[]; ban: boolean } = {
+        ids: [sessionId],
         ban: true,
       };
-      if (userId) {
+      if (userId && userId !== sessionId) {
         body.user_ids = [userId];
-      } else {
-        body.ids = [sessionId];
       }
+
+      console.log("banParticipant REST API request", { roomName, body });
 
       fetch(`https://api.daily.co/v1/rooms/${roomName}/eject`, {
         method: "POST",
@@ -260,7 +271,9 @@ export default function App() {
               console.error("Ban API error:", err);
             });
           }
-          console.log(`Banned participant: ${participantName} (${sessionId})`);
+          return res.json().then((data) => {
+            console.log(`Banned participant: ${participantName} (${sessionId})`, data);
+          });
         })
         .catch((err) => {
           console.error("Error calling ban API:", err);
