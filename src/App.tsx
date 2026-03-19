@@ -44,7 +44,7 @@ const MicVolumeVisualizer = () => {
       // this volume number will be between 0 and 1
       // give it a minimum scale of 0.15 to not completely disappear 👻
       volRef.current.style.transform = `scale(${Math.max(0.15, volume)})`;
-    }, [])
+    }, []),
   );
 
   // Your audio track's audio volume visualized in a small circle,
@@ -73,8 +73,8 @@ export default function App() {
   const [enableBlurClicked, setEnableBlurClicked] = useState(false);
   const [enableBackgroundClicked, setEnableBackgroundClicked] = useState(false);
   const [dailyRoomUrl, setDailyRoomUrl] = useState("");
-  const [dailyMeetingToken, setDailyMeetingToken] = useState((import.meta.env.VITE_DAILY_MEETING_TOKEN as string) ?? "");
-  const [dailyApiKey, setDailyApiKey] = useState((import.meta.env.VITE_DAILY_API_KEY as string) ?? "");
+  const [dailyMeetingToken, setDailyMeetingToken] = useState("");
+  const [dailyApiKey, setDailyApiKey] = useState("");
 
   const {
     cameraError,
@@ -145,7 +145,7 @@ export default function App() {
           },
         });
       },
-      [callObject, logEvent]
+      [callObject, logEvent],
     ),
     onParticipantLeft: logEvent,
     onParticipantUpdated: logEvent,
@@ -208,19 +208,28 @@ export default function App() {
       callObject.updateParticipant(sessionId, { eject: true });
       console.log(`Ejected participant: ${participantName} (${sessionId})`);
     },
-    [callObject]
+    [callObject],
   );
 
   // Ban a participant: eject them client-side, then call the REST API to
   // prevent them from rejoining. Requires a Daily API key.
   const banParticipant = useCallback(
     (sessionId: string, participantName: string) => {
-      console.log("banParticipant called", { sessionId, participantName, callObject: !!callObject, dailyRoomUrl, dailyApiKey: !!dailyApiKey });
+      console.log("banParticipant called", {
+        sessionId,
+        participantName,
+        callObject: !!callObject,
+        dailyRoomUrl,
+        dailyApiKey: !!dailyApiKey,
+      });
       if (!callObject) return;
 
       const participant = callObject.participants()?.[sessionId];
       const userId = participant?.user_id;
-      console.log("banParticipant participant lookup", { participant: !!participant, userId });
+      console.log("banParticipant participant lookup", {
+        participant: !!participant,
+        userId,
+      });
 
       const roomName = dailyRoomUrl.split("/").pop();
       if (!roomName) {
@@ -233,7 +242,7 @@ export default function App() {
         callObject.updateParticipant(sessionId, { eject: true });
         console.warn(
           "No API key provided — participant was ejected but not banned. " +
-            "Enter a Daily API key to enable banning."
+            "Enter a Daily API key to enable banning.",
         );
         return;
       }
@@ -241,7 +250,7 @@ export default function App() {
       if (!userId) {
         console.warn(
           "Participant has no user_id — ban won't prevent rejoining. " +
-            "Use meeting tokens with a user_id for effective banning."
+            "Use meeting tokens with a user_id for effective banning.",
         );
       }
 
@@ -272,31 +281,33 @@ export default function App() {
             });
           }
           return res.json().then((data) => {
-            console.log(`Banned participant: ${participantName} (${sessionId})`, data);
+            console.log(
+              `Banned participant: ${participantName} (${sessionId})`,
+              data,
+            );
           });
         })
         .catch((err) => {
           console.error("Error calling ban API:", err);
         });
     },
-    [callObject, dailyRoomUrl, dailyApiKey]
+    [callObject, dailyRoomUrl, dailyApiKey],
   );
 
   // Log participant-left events with reason to confirm ejections
   useDailyEvent(
     "participant-left",
-    useCallback(
-      (ev: DailyEventObjectParticipantLeft) => {
-        if (!ev) return;
-        const reason = (ev as DailyEventObjectParticipantLeft & { reason?: string }).reason;
-        if (reason) {
-          console.log(
-            `Participant left: ${ev.participant.user_name ?? ev.participant.session_id} — reason: ${reason}`
-          );
-        }
-      },
-      []
-    )
+    useCallback((ev: DailyEventObjectParticipantLeft) => {
+      if (!ev) return;
+      const reason = (
+        ev as DailyEventObjectParticipantLeft & { reason?: string }
+      ).reason;
+      if (reason) {
+        console.log(
+          `Participant left: ${ev.participant.user_name ?? ev.participant.session_id} — reason: ${reason}`,
+        );
+      }
+    }, []),
   );
 
   const enableBlur = useCallback(() => {
@@ -374,8 +385,8 @@ export default function App() {
         logEvent(ev);
         setIsRemoteMediaPlayerStarted(true);
       },
-      [logEvent, setIsRemoteMediaPlayerStarted]
-    )
+      [logEvent, setIsRemoteMediaPlayerStarted],
+    ),
   );
   useDailyEvent(
     "remote-media-player-started",
@@ -385,8 +396,8 @@ export default function App() {
         logEvent(ev);
         setIsRemoteMediaPlayerStarted(true);
       },
-      [logEvent, setIsRemoteMediaPlayerStarted]
-    )
+      [logEvent, setIsRemoteMediaPlayerStarted],
+    ),
   );
   useDailyEvent("remote-media-player-updated", logEvent);
 
@@ -516,7 +527,7 @@ export default function App() {
         console.error("Error setting camera", err);
       });
     },
-    [setCamera]
+    [setCamera],
   );
 
   // change mic device
@@ -526,7 +537,7 @@ export default function App() {
         console.error("Error setting microphone", err);
       });
     },
-    [setMicrophone]
+    [setMicrophone],
   );
 
   // change speaker device
@@ -536,7 +547,7 @@ export default function App() {
         console.error("Error setting speaker", err);
       });
     },
-    [setSpeaker]
+    [setSpeaker],
   );
 
   const stopCamera = useCallback(() => {
@@ -718,8 +729,7 @@ export default function App() {
                 className="eject-btn"
                 onClick={() => {
                   const participants = callObject?.participants();
-                  const name =
-                    participants?.[id]?.user_name ?? id;
+                  const name = participants?.[id]?.user_name ?? id;
                   ejectParticipant(id, name);
                 }}
               >
@@ -729,8 +739,7 @@ export default function App() {
                 className="eject-btn ban-btn"
                 onClick={() => {
                   const participants = callObject?.participants();
-                  const name =
-                    participants?.[id]?.user_name ?? id;
+                  const name = participants?.[id]?.user_name ?? id;
                   banParticipant(id, name);
                 }}
               >
