@@ -59,6 +59,10 @@ const logEvent = useCallback((evt: DailyEventObject) => {
 - Don't use direct Daily event listeners when hooks are available
 - Avoid blocking UI operations during async Daily.js calls
 
+## Demo Branch Guidelines
+
+- **Additive changes only**: When creating demo branches, add new functionality on top of the existing code. Do not remove existing components, hooks, or UI sections — this keeps the git diff easy to read and review. Minimize style changes.
+
 ## Important Guidelines
 
 - Always upgrade to latest daily-js and daily-react versions before making changes
