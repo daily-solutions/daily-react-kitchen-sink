@@ -8,3 +8,25 @@
   grid-template-rows: 1fr 10fr;
   grid-gap: 20px;
 }
+
+.participant-tile {
+  position: relative;
+  display: inline-block;
+}
+
+.eject-btn {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  background: #e53e3e;
+  color: white;
+  border: none;
+  border-radius: 4px;
+  padding: 4px 8px;
+  cursor: pointer;
+  font-size: 12px;
+}
+
+.eject-btn:hover {
+  background: #c53030;
+}
