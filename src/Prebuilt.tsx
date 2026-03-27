@@ -44,9 +44,9 @@ export const Prebuilt = () => {
       dailyConfig: {
         useDevicePreferenceCookies: true,
       },
-      url: "https://hush.daily.co/demo",
+      url: "https://hush.daily.co/closed-captions-demo",
       token:
-        "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJyIjoiZGVtbyIsIm8iOnRydWUsImVsYyI6dHJ1ZSwicCI6eyJjYSI6InQifSwiZCI6IjY4M2I4OWY0LWIxZmQtNGY5NC1iODQ1LWVmMjY2NmUzZTIxMyIsImlhdCI6MTc3NDU5NzUyOH0.RA5QVKYjjz1Tk970I7L_3YHUMcN89TfIipvAgEUHPOU",
+        "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJyIjoiY2xvc2VkLWNhcHRpb25zLWRlbW8iLCJvIjp0cnVlLCJlbGMiOnRydWUsInAiOnsiY2EiOiJ0In0sImQiOiI2ODNiODlmNC1iMWZkLTRmOTQtYjg0NS1lZjI2NjZlM2UyMTMiLCJpYXQiOjE3NzQ1OTc3OTZ9.0rxVdbS0twOlKk4vVGu-wQcViTp6nJYbthGIX4ylUvI",
       iframeStyle: {
         width: "100%",
         height: "80vh",
