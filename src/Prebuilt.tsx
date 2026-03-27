@@ -46,7 +46,7 @@ export const Prebuilt = () => {
       },
       url: "https://hush.daily.co/closed-captions-demo",
       token:
-        "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJyIjoiY2xvc2VkLWNhcHRpb25zLWRlbW8iLCJvIjp0cnVlLCJlbGMiOnRydWUsInAiOnsiY2EiOiJ0In0sImQiOiI2ODNiODlmNC1iMWZkLTRmOTQtYjg0NS1lZjI2NjZlM2UyMTMiLCJpYXQiOjE3NzQ1OTc3OTZ9.0rxVdbS0twOlKk4vVGu-wQcViTp6nJYbthGIX4ylUvI",
+        "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJyIjoiY2xvc2VkLWNhcHRpb25zLWRlbW8iLCJvIjp0cnVlLCJlbGMiOnRydWUsImFzdCI6ZmFsc2UsInAiOnsiY2EiOiJ0In0sImQiOiI2ODNiODlmNC1iMWZkLTRmOTQtYjg0NS1lZjI2NjZlM2UyMTMiLCJpYXQiOjE3NzQ2MDA3NjZ9.P-Mc5gwQgqKnYTXD1R-RdRfxAh8F6A7ZJF5GJaX0xKA",
       iframeStyle: {
         width: "100%",
         height: "80vh",
