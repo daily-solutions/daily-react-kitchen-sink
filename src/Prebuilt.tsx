@@ -46,7 +46,7 @@ export const Prebuilt = () => {
       },
       url: "https://hush.daily.co/demo",
       token:
-        "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJyIjoiZGVtbyIsIm8iOnRydWUsImFzdCI6dHJ1ZSwiZWxjIjp0cnVlLCJkIjoiNjgzYjg5ZjQtYjFmZC00Zjk0LWI4NDUtZWYyNjY2ZTNlMjEzIiwiaWF0IjoxNzcxODE4NDk2fQ.Ow2NL4lXVH5qbzgzbgBHaoMRqUlSBRzRtrCjnVI8SQA",
+        "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJyIjoiZGVtbyIsIm8iOnRydWUsImVsYyI6dHJ1ZSwicCI6eyJjYSI6InQifSwiZCI6IjY4M2I4OWY0LWIxZmQtNGY5NC1iODQ1LWVmMjY2NmUzZTIxMyIsImlhdCI6MTc3NDU5NjczNH0.klbT6tT0LqdbEY0Fi8Hq1jbGfHB2O_-qstnEQLB6gRg",
       iframeStyle: {
         width: "100%",
         height: "80vh",
