@@ -416,7 +416,7 @@ async function deleteRoomsForApiKey(
     console.log(`❌ Failed to delete: ${result.failure} rooms`);
     if (result.success + result.failure > 0) {
       console.log(
-        `� Success rate: ${(
+        `📊 Success rate: ${(
           (result.success / (result.success + result.failure)) *
           100
         ).toFixed(1)}%`
