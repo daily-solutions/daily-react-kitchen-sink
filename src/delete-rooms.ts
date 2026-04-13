@@ -438,7 +438,7 @@ async function main(): Promise<void> {
 
   if (DAILY_API_KEYS.length === 0) {
     console.error(
-      "❌ Please set your DAILY_API_KEY environment variables (DAILY_API_KEY_1, DAILY_API_KEY_2, etc.) or DAILY_API_KEY"
+      "❌ Please set the DAILY_API_KEY environment variable or configure DAILY_API_KEYS in this script."
     );
     return;
   }
