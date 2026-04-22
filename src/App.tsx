@@ -1,4 +1,4 @@
-import React, { useCallback, useRef, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import Daily, {
   DailyEventObject,
   DailyEventObjectParticipant,
@@ -7,6 +7,7 @@ import Daily, {
 import {
   DailyAudio,
   DailyVideo,
+  useActiveSpeakerId,
   useAudioLevelObserver,
   useCPULoad,
   useDaily,
@@ -166,12 +167,42 @@ export default function App() {
     onCPULoadChange: logEvent,
   });
 
-  const { startRecording, stopRecording, isRecording } = useRecording({
-    onRecordingData: logEvent,
-    onRecordingError: logEvent,
-    onRecordingStarted: logEvent,
-    onRecordingStopped: logEvent,
-  });
+  const { startRecording, stopRecording, updateRecording, isRecording } =
+    useRecording({
+      onRecordingData: logEvent,
+      onRecordingError: logEvent,
+      onRecordingStarted: logEvent,
+      onRecordingStopped: logEvent,
+    });
+
+  const activeSpeakerId = useActiveSpeakerId();
+  const preferredIdsRef = useRef<string[]>([]);
+
+  const buildDominantLayout = useCallback(
+    () => ({
+      preset: "custom" as const,
+      composition_params: {
+        mode: "dominant",
+        "videoSettings.preferScreenshare": true,
+        "videoSettings.dominant.followDomFlag": false,
+        "videoSettings.preferredParticipantIds":
+          preferredIdsRef.current.join(","),
+        "videoSettings.showParticipantLabels": true,
+      },
+    }),
+    []
+  );
+
+  useEffect(() => {
+    if (!activeSpeakerId) return;
+    preferredIdsRef.current = [
+      activeSpeakerId,
+      ...preferredIdsRef.current.filter((id) => id !== activeSpeakerId),
+    ].slice(0, 4);
+    if (isRecording) {
+      updateRecording({ layout: buildDominantLayout() });
+    }
+  }, [activeSpeakerId, isRecording, updateRecording, buildDominantLayout]);
 
   useDailyEvent("load-attempt-failed", logEvent);
   useDailyEvent("joining-meeting", logEvent);
@@ -575,7 +606,10 @@ export default function App() {
         <br />
         <button onClick={stopCamera}>Camera Off</button>
         <button onClick={updateCameraOn}>Camera On</button> <br />
-        <button disabled={isRecording} onClick={() => startRecording()}>
+        <button
+          disabled={isRecording}
+          onClick={() => startRecording({ layout: buildDominantLayout() })}
+        >
           Start Recording
         </button>
         <button disabled={!isRecording} onClick={() => stopRecording()}>
