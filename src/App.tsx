@@ -188,6 +188,11 @@ export default function App() {
         "videoSettings.preferredParticipantIds":
           preferredIdsRef.current.join(","),
         "videoSettings.showParticipantLabels": true,
+        "videoSettings.grid.labelPlacement": "inside-at-bottom",
+        "videoSettings.labels.color": "white",
+        "videoSettings.labels.strokeColor": "rgba(0, 0, 0, 1)",
+        "videoSettings.labels.fontWeight": "800",
+        "videoSettings.labels.offset_x_gu": 0.5,
       },
     }),
     []
