@@ -1,7 +1,7 @@
 import { fileURLToPath } from "url";
 
 // Configuration - replace with your actual Daily.co API keys
-const DAILY_API_KEYS = [""].filter(Boolean); // Remove undefined values
+const DAILY_API_KEYS = [].filter(Boolean); // Remove undefined values
 
 // Fallback for single API key (backwards compatibility)
 if (DAILY_API_KEYS.length === 0 && process.env.DAILY_API_KEY) {
@@ -31,14 +31,30 @@ function sleep(ms: number): Promise<void> {
 }
 
 /**
- * Utility function to create chunks from an array
+ * Run async tasks with a concurrency limit.
+ * Keeps `concurrency` tasks in-flight at all times until the input is exhausted.
  */
-function chunkArray<T>(array: T[], chunkSize: number): T[][] {
-  const chunks: T[][] = [];
-  for (let i = 0; i < array.length; i += chunkSize) {
-    chunks.push(array.slice(i, i + chunkSize));
+async function runWithConcurrency<T, R>(
+  items: T[],
+  concurrency: number,
+  fn: (item: T) => Promise<R>,
+): Promise<R[]> {
+  const results = new Array<R>(items.length);
+  let nextIndex = 0;
+
+  async function worker(): Promise<void> {
+    while (nextIndex < items.length) {
+      const i = nextIndex++;
+      results[i] = await fn(items[i]);
+    }
   }
-  return chunks;
+
+  const workers = Array.from(
+    { length: Math.min(concurrency, items.length) },
+    () => worker(),
+  );
+  await Promise.all(workers);
+  return results;
 }
 
 /**
@@ -60,7 +76,7 @@ class RateLimitError extends Error {
 async function retryWithBackoff<T>(
   fn: () => Promise<T>,
   maxRetries = 3,
-  baseDelay = 1000
+  baseDelay = 1000,
 ): Promise<T> {
   let lastError: unknown;
 
@@ -80,7 +96,7 @@ async function retryWithBackoff<T>(
         console.log(
           `⏳ Rate limited. Retrying in ${delay}ms (attempt ${attempt + 1}/${
             maxRetries + 1
-          })`
+          })`,
         );
         await sleep(delay);
       } else {
@@ -98,7 +114,7 @@ async function retryWithBackoff<T>(
  */
 async function deleteRecording(
   recordingId: string,
-  apiKey: string
+  apiKey: string,
 ): Promise<boolean> {
   try {
     return await retryWithBackoff(async () => {
@@ -110,7 +126,7 @@ async function deleteRecording(
             Authorization: `Bearer ${apiKey}`,
             "Content-Type": "application/json",
           },
-        }
+        },
       );
 
       if (response.ok) {
@@ -120,12 +136,12 @@ async function deleteRecording(
         // Rate limited - throw custom error to trigger retry
         throw new RateLimitError(
           429,
-          `Rate limited when deleting recording ${recordingId}`
+          `Rate limited when deleting recording ${recordingId}`,
         );
       } else {
         const errorData = await response.text();
         console.error(
-          `❌ Failed to delete recording ${recordingId}: ${response.status} ${response.statusText}`
+          `❌ Failed to delete recording ${recordingId}: ${response.status} ${response.statusText}`,
         );
         console.error("Error details:", errorData);
         return false;
@@ -134,7 +150,7 @@ async function deleteRecording(
   } catch (error) {
     if (error instanceof RateLimitError && error.status === 429) {
       console.error(
-        `❌ Rate limit exceeded for recording ${recordingId} after all retries`
+        `❌ Rate limit exceeded for recording ${recordingId} after all retries`,
       );
     } else {
       console.error(`❌ Error deleting recording ${recordingId}:`, error);
@@ -144,189 +160,126 @@ async function deleteRecording(
 }
 
 /**
- * Get all recordings using Daily.co REST API with pagination
+ * Fetch and delete all recordings using Daily.co REST API with pagination.
+ * Deletes each page of recordings as it is fetched.
  */
-async function getRecordings(
+async function fetchRecordingsPage(
   apiKey: string,
-  limit = 100
+  limit: number,
 ): Promise<Recording[]> {
-  const allRecordings: Recording[] = [];
-  let startingAfter: string | undefined;
-  let hasMore = true;
+  return retryWithBackoff(async () => {
+    const url = new URL(`${DAILY_API_BASE}/recordings`);
+    url.searchParams.append("limit", limit.toString());
 
-  console.log("📥 Fetching recordings with pagination...");
+    const response = await fetch(url.toString(), {
+      method: "GET",
+      headers: {
+        Authorization: `Bearer ${apiKey}`,
+        "Content-Type": "application/json",
+      },
+    });
 
-  while (hasMore) {
-    try {
-      const recordings = await retryWithBackoff(async () => {
-        const url = new URL(`${DAILY_API_BASE}/recordings`);
-        url.searchParams.append("limit", limit.toString());
+    if (response.ok) {
+      const data = (await response.json()) as RecordingsResponse;
+      return data.data ?? [];
+    } else if (response.status === 429) {
+      throw new RateLimitError(429, "Rate limited when fetching recordings");
+    } else {
+      const errorData = await response.text();
+      console.error(
+        `Failed to fetch recordings: ${response.status} ${response.statusText}`,
+      );
+      console.error("Error details:", errorData);
+      return [];
+    }
+  });
+}
 
-        if (startingAfter) {
-          url.searchParams.append("starting_after", startingAfter);
-        }
+async function fetchAndDeleteAllRecordings(
+  apiKey: string,
+  limit = 100,
+): Promise<{ success: number; failure: number }> {
+  let totalSuccess = 0;
+  let totalFailure = 0;
+  let totalProcessed = 0;
 
-        const response = await fetch(url.toString(), {
-          method: "GET",
-          headers: {
-            Authorization: `Bearer ${apiKey}`,
-            "Content-Type": "application/json",
-          },
-        });
+  console.log("📥 Fetching and deleting recordings...");
 
-        if (response.ok) {
-          const data = (await response.json()) as RecordingsResponse;
-          return data.data ?? [];
-        } else if (response.status === 429) {
-          // Rate limited - throw custom error to trigger retry
-          throw new RateLimitError(
-            429,
-            "Rate limited when fetching recordings"
-          );
-        } else {
-          const errorData = await response.text();
-          console.error(
-            `Failed to fetch recordings: ${response.status} ${response.statusText}`
-          );
-          console.error("Error details:", errorData);
-          return [];
-        }
-      });
+  try {
+    let recordings = await fetchRecordingsPage(apiKey, limit);
 
-      if (recordings.length === 0) {
-        hasMore = false;
-        break;
-      }
-
-      allRecordings.push(...recordings);
+    while (recordings.length > 0) {
       console.log(
-        `📋 Fetched ${recordings.length} recordings (total: ${allRecordings.length})`
+        `📋 Fetched ${recordings.length} recordings, deleting now...`,
       );
 
-      // If we got fewer results than the limit, we've reached the end
-      if (recordings.length < limit) {
-        hasMore = false;
-      } else {
-        // Use the last recording ID as the cursor for the next page
-        startingAfter = recordings[recordings.length - 1].id;
-      }
+      const wasFullPage = recordings.length >= limit;
 
-      // Add a small delay between pagination requests
-      if (hasMore) {
-        await new Promise((resolve) => setTimeout(resolve, 100));
-      }
-    } catch (error) {
-      if (error instanceof RateLimitError) {
-        console.error(
-          "❌ Rate limit exceeded when fetching recordings after all retries"
-        );
-      } else {
-        console.error("Error fetching recordings:", error);
-      }
-      hasMore = false; // Stop pagination on error
+      // Start deleting current page (concurrency-limited) and prefetching next page
+      const nextPagePromise = wasFullPage
+        ? fetchRecordingsPage(apiKey, limit)
+        : Promise.resolve([]);
+
+      const deleteResults = runWithConcurrency(
+        recordings,
+        30,
+        async (recording) => {
+          totalProcessed++;
+          console.log(
+            `🗑️  [${totalProcessed}] Deleting: ${recording.id} (room: ${recording.room_name})`,
+          );
+          return deleteRecording(recording.id, apiKey);
+        },
+      );
+
+      const [results, nextPage] = await Promise.all([
+        deleteResults,
+        nextPagePromise,
+      ]);
+
+      totalSuccess += results.filter(Boolean).length;
+      totalFailure += results.filter((r) => !r).length;
+
+      console.log(
+        `📈 Progress: ${totalSuccess} succeeded, ${totalFailure} failed`,
+      );
+
+      recordings = nextPage;
+    }
+  } catch (error) {
+    if (error instanceof RateLimitError) {
+      console.error(
+        "❌ Rate limit exceeded when fetching recordings after all retries",
+      );
+    } else {
+      console.error("Error fetching recordings:", error);
     }
   }
 
-  console.log(`📊 Total recordings fetched: ${allRecordings.length}`);
-  return allRecordings;
+  console.log(
+    `📊 Total processed: ${totalSuccess} succeeded, ${totalFailure} failed`,
+  );
+  return { success: totalSuccess, failure: totalFailure };
 }
 
 /**
- * Delete all recordings for a specific API key with parallel processing
+ * Delete all recordings for a specific API key
  */
 async function deleteRecordingsForApiKey(
   apiKey: string,
-  keyIndex: number
+  keyIndex: number,
 ): Promise<{ success: number; failure: number }> {
   console.log(
-    `\n🔑 Processing API key ${keyIndex + 1}/${DAILY_API_KEYS.length}...`
+    `\n🔑 Processing API key ${keyIndex + 1}/${DAILY_API_KEYS.length}...`,
   );
 
-  try {
-    const recordings = await getRecordings(apiKey);
+  const result = await fetchAndDeleteAllRecordings(apiKey);
 
-    if (recordings.length === 0) {
-      console.log(`✨ No recordings found for API key ${keyIndex + 1}`);
-      return { success: 0, failure: 0 };
-    }
+  console.log(`\n📈 API Key ${keyIndex + 1} Final Summary:`);
+  console.log(`✅ Successfully deleted: ${result.success} recordings`);
+  console.log(`❌ Failed to delete: ${result.failure} recordings`);
 
-    console.log(
-      `📊 Found ${recordings.length} recordings to delete for API key ${
-        keyIndex + 1
-      }`
-    );
-
-    // Process recordings in parallel batches to avoid overwhelming the API
-    const batchSize = 20; // Number of parallel deletions per batch
-    const batches = chunkArray(recordings, batchSize);
-
-    let successCount = 0;
-    let failureCount = 0;
-    let processedCount = 0;
-
-    console.log(
-      `🚀 Processing ${batches.length} batches of ${batchSize} deletions each...`
-    );
-
-    // Process each batch in parallel
-    for (let batchIndex = 0; batchIndex < batches.length; batchIndex++) {
-      const batch = batches[batchIndex];
-      const batchNumber = batchIndex + 1;
-
-      console.log(
-        `\n📦 Processing batch ${batchNumber}/${batches.length} (${batch.length} recordings)...`
-      );
-
-      // Delete all recordings in this batch in parallel
-      const batchPromises = batch.map(async (recording, recordingIndex) => {
-        const globalIndex = batchIndex * batchSize + recordingIndex + 1;
-        console.log(
-          `🗑️  [${globalIndex}/${recordings.length}] Deleting: ${recording.id} (room: ${recording.room_name})`
-        );
-
-        const success = await deleteRecording(recording.id, apiKey);
-        return { success, recording };
-      });
-
-      // Wait for all deletions in this batch to complete
-      const batchResults = await Promise.all(batchPromises);
-
-      // Count results from this batch
-      const batchSuccess = batchResults.filter((r) => r.success).length;
-      const batchFailure = batchResults.filter((r) => !r.success).length;
-
-      successCount += batchSuccess;
-      failureCount += batchFailure;
-      processedCount += batch.length;
-
-      console.log(
-        `✅ Batch ${batchNumber} complete: ${batchSuccess} succeeded, ${batchFailure} failed`
-      );
-      console.log(
-        `📈 Overall progress: ${processedCount}/${recordings.length} processed (${successCount} succeeded, ${failureCount} failed)`
-      );
-
-      // Add a delay between batches to be respectful to the API
-      if (batchIndex < batches.length - 1) {
-        console.log("⏳ Waiting before next batch...");
-        await sleep(500); // 500ms delay between batches
-      }
-    }
-
-    console.log(`\n📈 API Key ${keyIndex + 1} Final Summary:`);
-    console.log(`✅ Successfully deleted: ${successCount} recordings`);
-    console.log(`❌ Failed to delete: ${failureCount} recordings`);
-    console.log(
-      `📊 Success rate: ${((successCount / recordings.length) * 100).toFixed(
-        1
-      )}%`
-    );
-
-    return { success: successCount, failure: failureCount };
-  } catch (error) {
-    console.error(`❌ Error processing API key ${keyIndex + 1}:`, error);
-    return { success: 0, failure: 0 };
-  }
+  return result;
 }
 
 /**
@@ -337,7 +290,7 @@ async function main(): Promise<void> {
 
   if (DAILY_API_KEYS.length === 0) {
     console.error(
-      "❌ Please set your DAILY_API_KEY environment variables (DAILY_API_KEY_1, DAILY_API_KEY_2, etc.) or DAILY_API_KEY"
+      "❌ Please set your DAILY_API_KEY environment variables (DAILY_API_KEY_1, DAILY_API_KEY_2, etc.) or DAILY_API_KEY",
     );
     return;
   }
@@ -347,20 +300,14 @@ async function main(): Promise<void> {
   let totalSuccess = 0;
   let totalFailure = 0;
 
-  // Process each API key
-  for (let i = 0; i < DAILY_API_KEYS.length; i++) {
-    const apiKey = DAILY_API_KEYS[i];
-    if (!apiKey) continue;
+  // Process all API keys concurrently — they are separate accounts
+  const results = await Promise.all(
+    DAILY_API_KEYS.map((apiKey, i) => deleteRecordingsForApiKey(apiKey, i)),
+  );
 
-    const result = await deleteRecordingsForApiKey(apiKey, i);
+  for (const result of results) {
     totalSuccess += result.success;
     totalFailure += result.failure;
-
-    // Add a delay between API keys to be respectful
-    if (i < DAILY_API_KEYS.length - 1) {
-      console.log("⏳ Waiting before processing next API key...");
-      await new Promise((resolve) => setTimeout(resolve, 1000));
-    }
   }
 
   console.log("\n🎉 Final Summary Across All API Keys:");
@@ -374,13 +321,13 @@ async function main(): Promise<void> {
  */
 async function deleteSingleRecording(
   recordingId: string,
-  apiKeyIndex = 0
+  apiKeyIndex = 0,
 ): Promise<void> {
   console.log(`🗑️  Deleting single recording: ${recordingId}`);
 
   if (DAILY_API_KEYS.length === 0) {
     console.error(
-      "❌ Please set your DAILY_API_KEY environment variables or update the script"
+      "❌ Please set your DAILY_API_KEY environment variables or update the script",
     );
     return;
   }
@@ -397,7 +344,7 @@ async function deleteSingleRecording(
 // Export functions for use in other modules
 export {
   deleteRecording,
-  getRecordings,
+  fetchAndDeleteAllRecordings,
   deleteRecordingsForApiKey,
   deleteSingleRecording,
 };
