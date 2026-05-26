@@ -1,7 +1,7 @@
 import { fileURLToPath } from "url";
 
 // Configuration - replace with your actual Daily.co API keys
-const DAILY_API_KEYS = [].filter(Boolean); // Remove undefined values
+const DAILY_API_KEYS: string[] = [].filter(Boolean); // Remove undefined values
 
 // Fallback for single API key (backwards compatibility)
 if (DAILY_API_KEYS.length === 0 && process.env.DAILY_API_KEY) {
@@ -9,6 +9,11 @@ if (DAILY_API_KEYS.length === 0 && process.env.DAILY_API_KEY) {
 }
 
 const DAILY_API_BASE = "https://api.daily.co/v1";
+
+// Delete recordings that started before this date (ISO 8601: YYYY-MM-DD or full timestamp).
+// Set to null to delete all recordings regardless of start date.
+const DELETE_RECORDINGS_BEFORE_DATE: string | null = "2025-09-02";
+// const DELETE_RECORDINGS_BEFORE_DATE: string | null = "2025-10-31";
 
 interface Recording {
   id: string;
@@ -166,10 +171,14 @@ async function deleteRecording(
 async function fetchRecordingsPage(
   apiKey: string,
   limit: number,
+  startingAfter?: string,
 ): Promise<Recording[]> {
   return retryWithBackoff(async () => {
     const url = new URL(`${DAILY_API_BASE}/recordings`);
     url.searchParams.append("limit", limit.toString());
+    if (startingAfter) {
+      url.searchParams.append("starting_after", startingAfter);
+    }
 
     const response = await fetch(url.toString(), {
       method: "GET",
@@ -185,81 +194,121 @@ async function fetchRecordingsPage(
     } else if (response.status === 429) {
       throw new RateLimitError(429, "Rate limited when fetching recordings");
     } else {
+      // Throw instead of returning [] so transient errors don't masquerade as
+      // end-of-pagination and silently abort the run mid-stream.
       const errorData = await response.text();
-      console.error(
-        `Failed to fetch recordings: ${response.status} ${response.statusText}`,
+      throw new Error(
+        `Failed to fetch recordings: ${response.status} ${response.statusText} — ${errorData}`,
       );
-      console.error("Error details:", errorData);
-      return [];
     }
   });
 }
 
 async function fetchAndDeleteAllRecordings(
   apiKey: string,
+  cutoffDate: string | null,
   limit = 100,
-): Promise<{ success: number; failure: number }> {
+): Promise<{ success: number; failure: number; skipped: number }> {
   let totalSuccess = 0;
   let totalFailure = 0;
+  let totalSkipped = 0;
   let totalProcessed = 0;
 
+  // start_ts from the Daily API is Unix seconds; convert cutoff to ms for comparison.
+  // Treat null and "" the same (no filter). Throw on anything truthy that fails to
+  // parse so callers see a non-zero exit rather than a silent zero-deletion run.
+  const cutoffMs =
+    cutoffDate === null || cutoffDate === ""
+      ? null
+      : new Date(cutoffDate).getTime();
+  if (cutoffMs !== null && !Number.isFinite(cutoffMs)) {
+    throw new Error(
+      `Invalid DELETE_RECORDINGS_BEFORE_DATE: "${cutoffDate}" did not parse as a date`,
+    );
+  }
+
   console.log("📥 Fetching and deleting recordings...");
+  if (cutoffMs !== null) {
+    // Log the resolved instant so the operator can verify timezone semantics.
+    // `new Date("YYYY-MM-DD")` is UTC midnight per ECMA-262; bare timestamps
+    // without `Z` are parsed as LOCAL. The resolved ISO instant disambiguates.
+    console.log(
+      `🗓️  Only deleting recordings that started before ${cutoffDate} (resolved to ${new Date(cutoffMs).toISOString()})`,
+    );
+  }
 
-  try {
-    let recordings = await fetchRecordingsPage(apiKey, limit);
+  let recordings = await fetchRecordingsPage(apiKey, limit);
 
-    while (recordings.length > 0) {
-      console.log(
-        `📋 Fetched ${recordings.length} recordings, deleting now...`,
-      );
+  while (recordings.length > 0) {
+    const lastIdInPage = recordings[recordings.length - 1].id;
 
-      const wasFullPage = recordings.length >= limit;
+    // Guard against missing/non-numeric start_ts so an in-progress recording with
+    // no timestamp doesn't get filtered as "older than any cutoff" (0 < cutoffMs).
+    const toDelete =
+      cutoffMs !== null
+        ? recordings.filter(
+            (r) => Number.isFinite(r.start_ts) && r.start_ts * 1000 < cutoffMs,
+          )
+        : recordings;
+    const pageSkipped = recordings.length - toDelete.length;
+    totalSkipped += pageSkipped;
 
-      // Start deleting current page (concurrency-limited) and prefetching next page
-      const nextPagePromise = wasFullPage
-        ? fetchRecordingsPage(apiKey, limit)
-        : Promise.resolve([]);
+    console.log(
+      `📋 Fetched ${recordings.length} recordings${
+        cutoffMs !== null
+          ? `, ${toDelete.length} before cutoff (skipping ${pageSkipped})`
+          : ""
+      }${toDelete.length > 0 ? ", deleting now..." : ", nothing to delete this page"}`,
+    );
 
-      const deleteResults = runWithConcurrency(
-        recordings,
-        30,
-        async (recording) => {
-          totalProcessed++;
-          console.log(
-            `🗑️  [${totalProcessed}] Deleting: ${recording.id} (room: ${recording.room_name})`,
-          );
-          return deleteRecording(recording.id, apiKey);
-        },
-      );
+    const results = await runWithConcurrency(
+      toDelete,
+      30,
+      async (recording) => {
+        totalProcessed++;
+        console.log(
+          `🗑️  [${totalProcessed}] Deleting: ${recording.id} (room: ${recording.room_name})`,
+        );
+        return deleteRecording(recording.id, apiKey);
+      },
+    );
 
-      const [results, nextPage] = await Promise.all([
-        deleteResults,
-        nextPagePromise,
-      ]);
+    totalSuccess += results.filter(Boolean).length;
+    totalFailure += results.filter((r) => !r).length;
 
-      totalSuccess += results.filter(Boolean).length;
-      totalFailure += results.filter((r) => !r).length;
+    console.log(
+      `📈 Progress: ${totalSuccess} succeeded, ${totalFailure} failed${
+        cutoffMs !== null ? `, ${totalSkipped} skipped` : ""
+      }`,
+    );
 
-      console.log(
-        `📈 Progress: ${totalSuccess} succeeded, ${totalFailure} failed`,
-      );
+    const wasFullPage = recordings.length >= limit;
+    if (!wasFullPage) break;
 
-      recordings = nextPage;
-    }
-  } catch (error) {
-    if (error instanceof RateLimitError) {
-      console.error(
-        "❌ Rate limit exceeded when fetching recordings after all retries",
-      );
-    } else {
-      console.error("Error fetching recordings:", error);
-    }
+    // Inter-page throttle so we don't hammer the API between batches.
+    await sleep(50);
+
+    // Fetch next page AFTER deletes finish. With a cutoff we paginate by cursor
+    // (filtered-out recordings stay on the server so a cursor-less fetch would
+    // loop on the same page). Without a cutoff, deletion advances the head and
+    // no cursor is needed.
+    recordings = await fetchRecordingsPage(
+      apiKey,
+      limit,
+      cutoffMs !== null ? lastIdInPage : undefined,
+    );
   }
 
   console.log(
-    `📊 Total processed: ${totalSuccess} succeeded, ${totalFailure} failed`,
+    `📊 Total processed: ${totalSuccess} succeeded, ${totalFailure} failed${
+      cutoffMs !== null ? `, ${totalSkipped} skipped` : ""
+    }`,
   );
-  return { success: totalSuccess, failure: totalFailure };
+  return {
+    success: totalSuccess,
+    failure: totalFailure,
+    skipped: totalSkipped,
+  };
 }
 
 /**
@@ -268,16 +317,22 @@ async function fetchAndDeleteAllRecordings(
 async function deleteRecordingsForApiKey(
   apiKey: string,
   keyIndex: number,
-): Promise<{ success: number; failure: number }> {
+): Promise<{ success: number; failure: number; skipped: number }> {
   console.log(
     `\n🔑 Processing API key ${keyIndex + 1}/${DAILY_API_KEYS.length}...`,
   );
 
-  const result = await fetchAndDeleteAllRecordings(apiKey);
+  const result = await fetchAndDeleteAllRecordings(
+    apiKey,
+    DELETE_RECORDINGS_BEFORE_DATE,
+  );
 
   console.log(`\n📈 API Key ${keyIndex + 1} Final Summary:`);
   console.log(`✅ Successfully deleted: ${result.success} recordings`);
   console.log(`❌ Failed to delete: ${result.failure} recordings`);
+  if (DELETE_RECORDINGS_BEFORE_DATE) {
+    console.log(`⏭️  Skipped (after cutoff): ${result.skipped} recordings`);
+  }
 
   return result;
 }
@@ -297,23 +352,51 @@ async function main(): Promise<void> {
 
   console.log(`🔑 Found ${DAILY_API_KEYS.length} API key(s) to process`);
 
+  if (DELETE_RECORDINGS_BEFORE_DATE) {
+    console.log(
+      `🗓️  Date filter enabled: Only deleting recordings that started before ${DELETE_RECORDINGS_BEFORE_DATE}`,
+    );
+  } else {
+    console.log("⚠️  No date filter: Will delete ALL recordings");
+  }
+
   let totalSuccess = 0;
   let totalFailure = 0;
+  let totalSkipped = 0;
+  let erroredKeys = 0;
 
-  // Process all API keys concurrently — they are separate accounts
-  const results = await Promise.all(
+  // Process all API keys concurrently. They are separate accounts.
+  // allSettled so one key's fatal error doesn't discard the others' counters.
+  const settled = await Promise.allSettled(
     DAILY_API_KEYS.map((apiKey, i) => deleteRecordingsForApiKey(apiKey, i)),
   );
 
-  for (const result of results) {
-    totalSuccess += result.success;
-    totalFailure += result.failure;
+  for (let i = 0; i < settled.length; i++) {
+    const outcome = settled[i];
+    if (outcome.status === "fulfilled") {
+      totalSuccess += outcome.value.success;
+      totalFailure += outcome.value.failure;
+      totalSkipped += outcome.value.skipped;
+    } else {
+      erroredKeys++;
+      console.error(`❌ API key ${i + 1} aborted:`, outcome.reason);
+    }
   }
 
   console.log("\n🎉 Final Summary Across All API Keys:");
   console.log(`✅ Total successfully deleted: ${totalSuccess} recordings`);
   console.log(`❌ Total failed to delete: ${totalFailure} recordings`);
+  if (DELETE_RECORDINGS_BEFORE_DATE) {
+    console.log(`⏭️  Total skipped (after cutoff): ${totalSkipped} recordings`);
+  }
+  if (erroredKeys > 0) {
+    console.log(`🚨 API keys that aborted mid-run: ${erroredKeys}`);
+  }
   console.log("🏁 Finished deleting recordings from all accounts");
+
+  if (erroredKeys > 0) {
+    throw new Error(`${erroredKeys} API key(s) aborted mid-run`);
+  }
 }
 
 /**
@@ -354,5 +437,8 @@ export {
 const __filename = fileURLToPath(import.meta.url);
 
 if (process.argv[1] === __filename) {
-  main().catch(console.error);
+  main().catch((error) => {
+    console.error(error);
+    process.exitCode = 1;
+  });
 }
