@@ -1,0 +1,3 @@
+# Drop the recording's raw-tracks .wav files and the event JSON here, then run:
+#   node raw-tracks-align/align.ts ./raw-tracks-align/sample-data
+# Output WAVs are written to ./aligned/ inside this folder.
