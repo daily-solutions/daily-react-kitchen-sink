@@ -5,6 +5,7 @@ import {
   useAppMessage,
   useCallFrame,
   useDaily,
+  useDailyEvent,
   useParticipantCounts,
   useParticipantIds,
 } from "@daily-co/daily-react";
@@ -20,6 +21,7 @@ const App = () => {
   window.callObject = callObject;
 
   const participantCount = useParticipantCounts();
+  const remoteParticipantIds = useParticipantIds({ filter: "remote" });
 
   const logEvent = useCallback((evt: DailyEventObject) => {
     if ("action" in evt) {
@@ -29,6 +31,35 @@ const App = () => {
       console.log("logEvent:", evt);
     }
   }, []);
+
+  // Handle custom button clicks using useDailyEvent
+  useDailyEvent(
+    "custom-button-click",
+    useCallback(
+      (event: DailyEventObject<"custom-button-click">) => {
+        if (event.button_id === "muteAll" && callObject) {
+          // Build update object for all remote participants
+          const updates: Record<string, { setAudio: boolean }> = {};
+          for (const sessionId of remoteParticipantIds) {
+            updates[sessionId] = {
+              setAudio: false,
+              updatePermissions: {
+                // Only allow video, revoke audio
+                canSend: new Set(["video"]),
+                // or canSend: ['video'] also works
+              },
+            };
+          }
+
+          if (Object.keys(updates).length > 0) {
+            callObject.updateParticipants(updates);
+            console.log("Muted all remote participants:", updates);
+          }
+        }
+      },
+      [callObject, remoteParticipantIds]
+    )
+  );
 
   useParticipantIds({
     onParticipantJoined: logEvent,
@@ -83,6 +114,8 @@ export const Prebuilt = () => {
     // @ts-expect-error will be fixed in the next release
     parentElRef: wrapperRef,
     options: {
+      token:
+        "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJyIjoiZGVtbyIsInUiOiJvd25lciIsInVkIjoib3duZXIiLCJvIjp0cnVlLCJkIjoiNjgzYjg5ZjQtYjFmZC00Zjk0LWI4NDUtZWYyNjY2ZTNlMjEzIiwiaWF0IjoxNzY1NDU1MTE1fQ.QiDV2Ijsqt8BMRiOWVuWb6SmC78-ImofTwo3HmuTPNA",
       dailyConfig: {
         useDevicePreferenceCookies: true,
       },
@@ -93,6 +126,15 @@ export const Prebuilt = () => {
       },
       userData: {
         avatar: "https://www.svgrepo.com/show/532036/cloud-rain-alt.svg",
+      },
+      customTrayButtons: {
+        muteAll: {
+          iconPath: "https://www.svgrepo.com/show/532036/cloud-rain-alt.svg",
+          iconPathDarkMode:
+            "https://www.svgrepo.com/show/532036/cloud-rain-alt.svg",
+          label: "Mute All",
+          tooltip: "Mute all other participants",
+        },
       },
     },
     shouldCreateInstance: useCallback(() => Boolean(wrapperRef.current), []),
