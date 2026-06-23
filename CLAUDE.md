@@ -6,9 +6,21 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 A Daily.js React demo that logs every Daily event to the console, useful for debugging and understanding event flow. Serves as a reference implementation for Daily React and daily-js integrations.
 
-## Branching Strategy
+## Demos and Pull Requests
 
-Each branch is a separate demo. When a new demo is requested, create a new branch (e.g., `live-streaming-demo`, `virtual-background-demo`). The `main` branch contains the base reference implementation.
+This repo exists to make demos. Each demo is one feature or pattern shown in the simplest way possible.
+
+**One demo, one branch, one PR.** When a new demo is requested:
+- Create a new branch off `main` (e.g., `live-streaming-demo`, `virtual-background-demo`). The `main` branch holds the base reference implementation.
+- Open one PR for that demo. The PR is the demo. It is not meant to merge to `main`; it lives as a reference people can read.
+
+**Keep every PR as small and readable as possible.** A reviewer should understand the whole demo in one sitting. The fewer changes, the better:
+- Change as few files as you can. Most demos touch only `src/App.tsx`, and sometimes `src/index.tsx`. Many good demos are a single file with well under 100 lines changed.
+- Only add what the demo needs. Don't refactor, rename, or restyle unrelated code. Don't reformat files you aren't changing.
+- Additive changes only (see Demo Branch Guidelines below). Build on top of the base; don't remove existing components, hooks, or UI.
+- Write a short, clear PR description with two parts: a **Summary** (bullet points naming the actual hooks, methods, and config used) and a **Test plan** (the exact steps you ran to confirm it works). Add a **Prerequisites** or **Background** section only when the demo needs room config or extra context.
+
+Look at recent merged demos in the sibling repo for the bar to hit: https://github.com/daily-solutions/daily-react-kitchen-sink/pulls
 
 ## Commands
 
