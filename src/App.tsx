@@ -72,6 +72,9 @@ export default function App() {
   const [enableBackgroundClicked, setEnableBackgroundClicked] = useState(false);
   const [dailyRoomUrl, setDailyRoomUrl] = useState("");
   const [dailyMeetingToken, setDailyMeetingToken] = useState("");
+  const [recordingInstanceId, setRecordingInstanceId] = useState<string | null>(
+    null
+  );
 
   const {
     cameraError,
@@ -575,10 +578,30 @@ export default function App() {
         <br />
         <button onClick={stopCamera}>Camera Off</button>
         <button onClick={updateCameraOn}>Camera On</button> <br />
-        <button disabled={isRecording} onClick={() => startRecording()}>
+        <button
+          disabled={isRecording}
+          onClick={() => {
+            const instanceId = crypto.randomUUID();
+            setRecordingInstanceId(instanceId);
+            console.log("starting recording: ", instanceId);
+            startRecording({
+              instanceId,
+              type: "raw-tracks",
+            });
+          }}
+        >
           Start Recording
         </button>
-        <button disabled={!isRecording} onClick={() => stopRecording()}>
+        <button
+          disabled={!isRecording}
+          onClick={() => {
+            if (recordingInstanceId) {
+              console.log("stopping recording: ", recordingInstanceId);
+              stopRecording({ instanceId: recordingInstanceId });
+              setRecordingInstanceId(null);
+            }
+          }}
+        >
           Stop Recording
         </button>
         <br />
