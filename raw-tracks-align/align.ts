@@ -57,7 +57,7 @@ const FFPROBE = process.env.FFPROBE ?? "ffprobe";
 
 /** A media file referenced by the event JSON, before it is matched to a local file. */
 type TrackRef = {
-  participant: string;
+  speaker: string; // user_id when set, else participant_id (see below)
   fileBase: string; // basename of the s3 uri, no directory
   startTsMs: number;
 };
@@ -69,6 +69,7 @@ type MediaStartedEvent = {
     uri?: string;
     contentType?: string;
     mediaStartTime?: number;
+    user_id?: string;
   };
 };
 
@@ -110,8 +111,11 @@ function parseEvents(dir: string): TrackRef[] {
       if (!uri || typeof mediaStartTime !== "number" || !e.participant_id) {
         throw new Error(`Incomplete recording-media-started event: ${JSON.stringify(e)}`);
       }
+      // Group by the app-set user_id when present. A reconnect (leave + rejoin) reuses the
+      // same user_id but gets a NEW participant_id, so user_id is what merges a speaker's
+      // two files back together. Fall back to participant_id when no user_id was set.
       return {
-        participant: e.participant_id,
+        speaker: e.data?.user_id || e.participant_id,
         fileBase: basename(uri),
         startTsMs: Math.round(mediaStartTime * 1000), // epoch seconds -> ms
       };
@@ -244,7 +248,7 @@ function main(): void {
     console.log(`Parsed ${refs.length} audio file(s) from the event JSON:`);
     for (const r of refs) {
       const offset = ((r.startTsMs - minStart) / 1000).toFixed(3);
-      console.log(`  ${r.participant}  +${offset}s  ${r.fileBase}`);
+      console.log(`  ${r.speaker}  +${offset}s  ${r.fileBase}`);
     }
     console.log("Dry run: offsets only, no media read and no output written.");
     return;
@@ -252,26 +256,27 @@ function main(): void {
 
   const withFiles = refs.map((r) => {
     const file = resolveFile(inputDir, r.fileBase);
-    return { participant: r.participant, file, offsetMs: r.startTsMs - minStart, durMs: durationMs(file) };
+    return { speaker: r.speaker, file, offsetMs: r.startTsMs - minStart, durMs: durationMs(file) };
   });
 
   const targetMs = Math.max(...withFiles.map((t) => t.offsetMs + t.durMs));
 
-  const byParticipant = new Map<string, { file: string; offsetMs: number }[]>();
+  // Group each speaker's files (a reconnect gives one speaker more than one file).
+  const bySpeaker = new Map<string, { file: string; offsetMs: number }[]>();
   for (const t of withFiles) {
-    const list = byParticipant.get(t.participant) ?? [];
+    const list = bySpeaker.get(t.speaker) ?? [];
     list.push({ file: t.file, offsetMs: t.offsetMs });
-    byParticipant.set(t.participant, list);
+    bySpeaker.set(t.speaker, list);
   }
 
   const outDir = join(inputDir, "aligned");
   mkdirSync(outDir, { recursive: true });
 
-  console.log(`Target length: ${(targetMs / 1000).toFixed(3)}s across ${byParticipant.size} speaker(s)`);
-  for (const [participant, files] of byParticipant) {
-    const outFile = join(outDir, `${safeName(participant)}.wav`);
+  console.log(`Target length: ${(targetMs / 1000).toFixed(3)}s across ${bySpeaker.size} speaker(s)`);
+  for (const [speaker, files] of bySpeaker) {
+    const outFile = join(outDir, `${safeName(speaker)}.wav`);
     const offsets = files.map((f) => `${(f.offsetMs / 1000).toFixed(2)}s`).join(", ");
-    console.log(`  ${participant}: ${files.length} file(s), offsets [${offsets}] -> ${outFile}`);
+    console.log(`  ${speaker}: ${files.length} file(s), offsets [${offsets}] -> ${outFile}`);
     alignParticipant(files, targetMs, outFile);
   }
   console.log("Done. Each output is the same length and front-aligned to the session start.");
