@@ -16,6 +16,10 @@
  * Input dir holds the raw-tracks .wav files plus the event JSON. Output is written to
  * <input-dir>/aligned/<speaker>.wav.
  *
+ * WAV-ONLY: this expects gapless WAV input (enable_raw_tracks_transcoded_audio). It does
+ * not handle default raw-tracks .webm; see durationMs() for why. Use a room created by
+ * scripts/create-raw-tracks-room.ts.
+ *
  * Requires ffmpeg + ffprobe on PATH (the same tools the customer already uses). If you
  * want zero system deps, swap in ffmpeg-static / ffprobe-static and point FFMPEG/FFPROBE
  * at them.
@@ -69,10 +73,19 @@ type MediaStartedEvent = {
 };
 
 function parseEvents(dir: string): TrackRef[] {
-  const jsonName = readdirSync(dir).find((f) => f.toLowerCase().endsWith(".json"));
-  if (!jsonName) {
+  const jsonFiles = readdirSync(dir).filter((f) => f.toLowerCase().endsWith(".json"));
+  if (jsonFiles.length === 0) {
     throw new Error(`No .json event file found in ${dir}`);
   }
+  // One recording per directory. Two event JSONs means two recordings got mixed together,
+  // and silently picking one would align the wrong session. Stop and say so.
+  if (jsonFiles.length > 1) {
+    throw new Error(
+      `Found ${jsonFiles.length} .json files in ${dir} (${jsonFiles.join(", ")}). ` +
+        `Keep one recording per directory: fetch each with its own --out dir.`
+    );
+  }
+  const jsonName = jsonFiles[0];
   const doc = JSON.parse(readFileSync(join(dir, jsonName), "utf8")) as {
     format_id?: string;
     events?: MediaStartedEvent[];
@@ -133,13 +146,32 @@ function resolveFile(dir: string, fileBase: string): string {
 // Alignment (schema-independent from here down)
 // ---------------------------------------------------------------------------
 
+// Per-file duration is the ONE value we cannot get from the event JSON: it has no media
+// end time, and the recording-media-finished / track-removed event timestamps overshoot
+// the real media length by 1-5s (upload + teardown lag). We read it from the media's own
+// duration header.
+//
+// This is WAV-only on purpose. Gapless WAV (enable_raw_tracks_transcoded_audio) always
+// carries a duration header and starts cleanly at timestamp zero, which is what keeps the
+// align step exact and "no decode, no re-encode" fast. Default raw-tracks .webm has no
+// duration header (ffprobe returns "N/A") and a skewed start timestamp, so we stop with a
+// clear message instead of guessing. Record in a room from create-raw-tracks-room.ts.
 function durationMs(file: string): number {
-  const out = execFileSync(
-    FFPROBE,
-    ["-v", "error", "-show_entries", "format=duration", "-of", "default=nw=1:nk=1", file],
-    { encoding: "utf8" }
-  ).trim();
-  return Math.round(Number(out) * 1000);
+  const probed = Number(
+    execFileSync(
+      FFPROBE,
+      ["-v", "error", "-show_entries", "format=duration", "-of", "default=nw=1:nk=1", file],
+      { encoding: "utf8" }
+    ).trim()
+  );
+  if (!Number.isFinite(probed)) {
+    throw new Error(
+      `Could not read a duration from ${basename(file)}. This tool only handles gapless WAV ` +
+        `(enable_raw_tracks_transcoded_audio); a .webm raw-tracks file has no duration header. ` +
+        `Record in a room created by scripts/create-raw-tracks-room.ts, which sets that property.`
+    );
+  }
+  return Math.round(probed * 1000);
 }
 
 function safeName(participant: string): string {
@@ -245,4 +277,9 @@ function main(): void {
   console.log("Done. Each output is the same length and front-aligned to the session start.");
 }
 
-main();
+try {
+  main();
+} catch (err) {
+  console.error(err instanceof Error ? err.message : err);
+  process.exit(1);
+}

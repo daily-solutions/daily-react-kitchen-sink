@@ -16,6 +16,11 @@ The whole thing is cheap because you let Daily do the hard part during the recor
    onto one timeline, then `apad` to a shared length. On 16-bit PCM this is near-instant:
    no decode, no re-encode.
 
+> **WAV only.** `align.ts` is built for gapless WAV (step 1). Default raw-tracks `.webm`
+> has no duration header and a skewed start timestamp, so the aligner stops with a clear
+> message rather than guessing. Always record with `enable_raw_tracks_transcoded_audio`
+> (the room script below sets it).
+
 Docs:
 - Gapless transcoded audio: https://docs.daily.co/docs/guides/features/recording/index#gapless-transcoded-audio
 - `enable_raw_tracks_event_json` (Apr 29 2026 changelog): https://docs.daily.co/changelog/077-2026-04-29#media-services
@@ -69,13 +74,23 @@ node --env-file=.env.local scripts/fetch-recording.ts --room raw-tracks --latest
 ```
 
 This downloads the event JSON into `raw-tracks-align/sample-data/` and writes a
-`pull-media.sh` with the `aws s3 cp` commands for the track files. The recordings API
-presigns the event JSON, but raw-tracks media lives in your own S3 bucket, so the media
-pull uses your AWS credentials:
+`pull-media.sh` with the `aws s3 cp` commands for the **audio** track files (the aligner
+does not need the video). The recordings API presigns the event JSON, but raw-tracks media
+lives in your own S3 bucket, so the media pull uses your AWS credentials:
 
 ```bash
 bash raw-tracks-align/sample-data/pull-media.sh
 ```
+
+If that returns a `403`, your default AWS identity cannot read the bucket. Run it with the
+profile that owns the bucket:
+
+```bash
+AWS_PROFILE=your-profile bash raw-tracks-align/sample-data/pull-media.sh
+```
+
+Keep one recording per directory. The aligner reads the single event JSON it finds there,
+so if you want to align a second recording, fetch it into its own folder with `--out`.
 
 ### 4. Align
 

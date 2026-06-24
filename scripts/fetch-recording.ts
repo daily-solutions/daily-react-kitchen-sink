@@ -115,20 +115,31 @@ async function main(): Promise<void> {
   }
 
   // 2. Track files live in your S3 bucket. Emit aws-cli commands to pull them.
+  // Audio only: the aligner uses just the audio tracks, so there is no reason to pull the
+  // (much larger) video files.
   const tracks = rec.tracks ?? [];
   const audio = tracks.filter((t) => t.content_type?.startsWith("audio"));
   const bucket = link.s3_bucket;
   if (!bucket) {
     console.warn("No s3_bucket in the access-link response; cannot build pull commands.");
   } else {
-    const lines = ["#!/usr/bin/env bash", "set -euo pipefail", ""];
-    for (const t of tracks) {
+    const lines = [
+      "#!/usr/bin/env bash",
+      "set -euo pipefail",
+      "",
+      "# Raw-tracks media lives in your own S3 bucket, not in Daily's. If your default AWS",
+      "# identity cannot read it (403), run with the profile that owns the bucket, e.g.:",
+      "#   AWS_PROFILE=your-profile bash pull-media.sh",
+      "",
+    ];
+    for (const t of audio) {
       lines.push(`aws s3 cp "s3://${bucket}/${t.s3Key}" "${join(args.out, basename(t.s3Key))}"`);
     }
     const sh = join(args.out, "pull-media.sh");
     writeFileSync(sh, lines.join("\n") + "\n");
-    console.log(`Wrote ${tracks.length} track download command(s) -> ${sh}`);
-    console.log(`Run it with your AWS credentials for bucket "${bucket}":  bash ${sh}`);
+    console.log(`Wrote ${audio.length} audio track download command(s) -> ${sh}`);
+    console.log(`Run it with AWS creds that can read bucket "${bucket}":  bash ${sh}`);
+    console.log(`(If you get a 403, prefix it with the right profile: AWS_PROFILE=... bash ${sh})`);
   }
 
   // Heads-up if this recording is not gapless WAV.
