@@ -183,7 +183,7 @@ function safeName(participant: string): string {
 }
 
 function alignParticipant(
-  files: { file: string; offsetMs: number }[],
+  files: { file: string; offsetMs: number; durMs: number }[],
   targetMs: number,
   outFile: string
 ): void {
@@ -191,7 +191,15 @@ function alignParticipant(
   const chains: string[] = [];
   files.forEach((f, i) => {
     inputs.push("-i", f.file);
-    chains.push(`[${i}]adelay=${f.offsetMs}:all=1[a${i}]`);
+    // A WebRTC track ends (and sometimes starts) abruptly, so the join with the surrounding
+    // silence is a hard step: an audible click and a full-scale spike in the waveform. A
+    // short fade in/out at each fragment's edges ramps it to zero instead. 10 ms is below
+    // what you can hear on speech.
+    const fadeSec = Math.min(0.01, f.durMs / 1000 / 4);
+    const fadeOutStart = (f.durMs / 1000 - fadeSec).toFixed(4);
+    chains.push(
+      `[${i}]afade=t=in:d=${fadeSec},afade=t=out:st=${fadeOutStart}:d=${fadeSec},adelay=${f.offsetMs}:all=1[a${i}]`
+    );
   });
 
   const labels = files.map((_, i) => `[a${i}]`).join("");
@@ -262,10 +270,10 @@ function main(): void {
   const targetMs = Math.max(...withFiles.map((t) => t.offsetMs + t.durMs));
 
   // Group each speaker's files (a reconnect gives one speaker more than one file).
-  const bySpeaker = new Map<string, { file: string; offsetMs: number }[]>();
+  const bySpeaker = new Map<string, { file: string; offsetMs: number; durMs: number }[]>();
   for (const t of withFiles) {
     const list = bySpeaker.get(t.speaker) ?? [];
-    list.push({ file: t.file, offsetMs: t.offsetMs });
+    list.push({ file: t.file, offsetMs: t.offsetMs, durMs: t.durMs });
     bySpeaker.set(t.speaker, list);
   }
 
