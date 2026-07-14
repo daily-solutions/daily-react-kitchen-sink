@@ -22,3 +22,5 @@ npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
 dist/
+t2175-run-log.json
+t2175-silence.wav
