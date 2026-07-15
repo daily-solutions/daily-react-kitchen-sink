@@ -1,12 +1,14 @@
 import React, { useCallback, useRef, useState } from "react";
 import Daily, {
   DailyEventObject,
+  DailyEventObjectAppMessage,
   DailyEventObjectParticipant,
 } from "@daily-co/daily-js";
 
 import {
   DailyAudio,
   DailyVideo,
+  useAppMessage,
   useAudioLevelObserver,
   useCPULoad,
   useDaily,
@@ -19,6 +21,7 @@ import {
   useNetwork,
   useParticipantCounts,
   useParticipantIds,
+  useParticipantProperty,
   useRecording,
   useScreenShare,
   useTranscription,
@@ -27,6 +30,14 @@ import {
 import "./styles.css";
 
 console.info("Daily version: %s", Daily.version());
+
+// Knock-to-join app messages. The patient broadcasts a "knock".
+// The owner replies with a targeted "knock-received" so the patient
+// knows the request landed.
+type KnockMessage =
+  | { type: "knock"; name: string }
+  | { type: "knock-received" }
+  | { type: "knock-denied" };
 console.info("Daily supported Browser:");
 console.dir(Daily.supportedBrowser());
 
@@ -70,8 +81,15 @@ export default function App() {
 
   const [enableBlurClicked, setEnableBlurClicked] = useState(false);
   const [enableBackgroundClicked, setEnableBackgroundClicked] = useState(false);
-  const [dailyRoomUrl, setDailyRoomUrl] = useState("");
-  const [dailyMeetingToken, setDailyMeetingToken] = useState("");
+  // Prefill the room url and token from the query string so the two
+  // sides of the knock demo are just two urls: one with ?t=OWNER_TOKEN
+  // (the owner) and one without (the patient).
+  const [dailyRoomUrl, setDailyRoomUrl] = useState(
+    () => new URLSearchParams(window.location.search).get("room") ?? ""
+  );
+  const [dailyMeetingToken, setDailyMeetingToken] = useState(
+    () => new URLSearchParams(window.location.search).get("t") ?? ""
+  );
 
   const {
     cameraError,
@@ -194,6 +212,94 @@ export default function App() {
   if (nonFatalError) {
     logEvent(nonFatalError);
   }
+
+  // --- Knock-to-join (waiting room without the built-in waiting room) ---
+  // The room is created with permissions { hasPresence: false,
+  // canSend: false, canReceive: { base: false } }, so tokenless joiners
+  // land hidden and locked. They knock with an app message. The owner
+  // admits with updateParticipant + updatePermissions, or denies with
+  // an eject. No backend involved.
+  const localSessionId = useLocalSessionId();
+  const isOwner = useParticipantProperty(localSessionId, "owner");
+  const localPermissions = useParticipantProperty(
+    localSessionId,
+    "permissions"
+  );
+
+  const [knockName, setKnockName] = useState("Patient");
+  const [knockStatus, setKnockStatus] = useState<
+    "idle" | "sent" | "seen" | "denied"
+  >("idle");
+  const [knocks, setKnocks] = useState<{ sessionId: string; name: string }[]>(
+    []
+  );
+
+  const sendAppMessage = useAppMessage<KnockMessage>({
+    onAppMessage: useCallback(
+      (ev: DailyEventObjectAppMessage<KnockMessage>) => {
+        logEvent(ev);
+        if (ev.data.type === "knock") {
+          const { name } = ev.data;
+          setKnocks((prev) =>
+            prev.some((k) => k.sessionId === ev.fromId)
+              ? prev
+              : [...prev, { sessionId: ev.fromId, name }]
+          );
+          // Targeted ack back to the hidden knocker so their UI can
+          // show the request was seen.
+          callObject?.sendAppMessage({ type: "knock-received" }, ev.fromId);
+        } else if (ev.data.type === "knock-received") {
+          setKnockStatus("seen");
+        } else if (ev.data.type === "knock-denied") {
+          setKnockStatus("denied");
+          // The lobby permissions are server-enforced either way, so a
+          // denied patient stays locked out even if they skip this leave.
+          callObject?.leave().catch((err) => {
+            console.error("Error leaving after deny", err);
+          });
+        }
+      },
+      [callObject, logEvent]
+    ),
+  });
+
+  const knock = useCallback(() => {
+    sendAppMessage({ type: "knock", name: knockName }, "*");
+    setKnockStatus("sent");
+    logEvent({ action: "knock-sent" });
+  }, [sendAppMessage, knockName, logEvent]);
+
+  const admitKnocker = useCallback(
+    (sessionId: string) => {
+      if (!callObject) return;
+      callObject.updateParticipant(sessionId, {
+        updatePermissions: {
+          hasPresence: true,
+          canSend: true,
+          canReceive: { base: true },
+        },
+      });
+      setKnocks((prev) => prev.filter((k) => k.sessionId !== sessionId));
+      logEvent({ action: "knock-admitted" });
+    },
+    [callObject, logEvent]
+  );
+
+  const denyKnocker = useCallback(
+    (sessionId: string) => {
+      if (!callObject) return;
+      // Tested empirically: updateParticipant(sessionId, { eject: true })
+      // is a silent no-op while the target is hidden (hasPresence false).
+      // Eject works fine once the participant is present. So deny is a
+      // targeted app message, and the patient leaves on its own.
+      callObject.sendAppMessage({ type: "knock-denied" }, sessionId);
+      setKnocks((prev) => prev.filter((k) => k.sessionId !== sessionId));
+      logEvent({ action: "knock-denied" });
+    },
+    [callObject, logEvent]
+  );
+
+  const isAdmitted = localPermissions?.hasPresence === true;
 
   const enableBlur = useCallback(() => {
     if (!callObject || enableBlurClicked) {
@@ -593,6 +699,52 @@ export default function App() {
         >
           Toggle Transcription
         </button>
+        <hr />
+        3. Knock to join (waiting room without the built-in waiting room)
+        <br />
+        {isOwner ? (
+          <div id="knockRequests">
+            Knock requests: {knocks.length === 0 && "none yet"}
+            {knocks.map((k) => (
+              <div key={k.sessionId}>
+                {k.name} ({k.sessionId}){" "}
+                <button onClick={() => admitKnocker(k.sessionId)}>
+                  Admit
+                </button>{" "}
+                <button onClick={() => denyKnocker(k.sessionId)}>Deny</button>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <div id="knockPanel">
+            <input
+              type="text"
+              value={knockName}
+              onChange={(event) => {
+                setKnockName(event.target.value);
+              }}
+            />
+            <button
+              disabled={meetingState !== "joined-meeting" || isAdmitted}
+              onClick={knock}
+            >
+              Knock
+            </button>
+            <div id="knockStatus">
+              {isAdmitted
+                ? "Admitted! You are in the call."
+                : knockStatus === "denied"
+                ? "The host denied your request."
+                : meetingState === "joined-meeting"
+                ? knockStatus === "seen"
+                  ? "The host saw your request. Hang tight."
+                  : knockStatus === "sent"
+                  ? "Knock sent. Waiting for the host."
+                  : "You are in the lobby. Knock to ask the host to let you in."
+                : "Join the room first, then knock."}
+            </div>
+          </div>
+        )}
       </div>
       {participantIds.map((id) => (
         <DailyVideo type="video" key={id} automirror sessionId={id} />
