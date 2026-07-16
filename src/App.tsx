@@ -352,7 +352,6 @@ export default function App() {
       .then((customTrack) => {
         return callObject.startCustomTrack({
           track: customTrack.getVideoTracks()[0],
-          trackName: "customTrack",
         });
       })
       .catch((err) => {
@@ -456,6 +455,8 @@ export default function App() {
   const participantCounts = hidden + present;
 
   const meetingState = useMeetingState();
+
+  const localSessionId = useLocalSessionId();
 
   return (
     <>
@@ -575,7 +576,17 @@ export default function App() {
         <br />
         <button onClick={stopCamera}>Camera Off</button>
         <button onClick={updateCameraOn}>Camera On</button> <br />
-        <button disabled={isRecording} onClick={() => startRecording()}>
+        <button
+          disabled={isRecording}
+          onClick={() =>
+            startRecording({
+              layout: {
+                preset: "single-participant",
+                session_id: localSessionId,
+              },
+            })
+          }
+        >
           Start Recording
         </button>
         <button disabled={!isRecording} onClick={() => stopRecording()}>
@@ -607,7 +618,7 @@ export default function App() {
       ))}
       {participantIds.map((id) => (
         // @ts-expect-error This works just fine but gives a typescript error
-        <DailyVideo type="customTrack" key={id} automirror sessionId={id} />
+        <DailyVideo type="customVideo0" key={id} automirror sessionId={id} />
       ))}
       {rmpParticipantIds.map((id) => (
         <DailyVideo type="rmpVideo" key={id} automirror sessionId={id} />
