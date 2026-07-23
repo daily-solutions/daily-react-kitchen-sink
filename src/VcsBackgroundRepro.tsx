@@ -1,5 +1,6 @@
 import { useCallback, useRef, useState } from "react";
 import Daily, {
+  DailyCall,
   DailyEventObject,
   DailyStreamingOptions,
 } from "@daily-co/daily-js";
@@ -13,23 +14,45 @@ import {
 // ---------------------------------------------------------------------------
 // T-2904: VCS overlay-asset name-collision repro
 // ---------------------------------------------------------------------------
-// The `daily:baseline` VCS layout ships bundled default images. One of them is
-// `overlay.png`. If a customer's own session_assets image uses that exact
-// filename, the compositor's bundled default silently wins over the customer's
-// real image at startup (a timing / copy-order bug). No error surfaces.
+// Background from the ticket: the `daily:baseline` VCS layout ships bundled
+// default images. One of them is `overlay.png`. The ticket reported that if a
+// customer's own session_assets image uses that exact filename, the bundled
+// default silently wins over the customer's real image at startup (a timing /
+// copy-order bug), with no error surfaced. The original ticket reproduced this
+// via the REST live-streaming endpoint (POST /live-streaming/start).
 //
-// This demo runs two independent record/stop cycles that differ ONLY in the
-// session_assets key / image.assetName:
-//   Case A (bug):     key "images/overlay.png",           assetName "overlay.png"
-//   Case B (control): key "images/ct-journey-overlay.png", assetName "ct-journey-overlay.png"
-// Both point session_assets at the SAME real public image URL. Case A is
-// expected to render Daily's small built-in graphic instead of the real image;
-// Case B is expected to render the real 1920x1080 image full-screen.
+// This demo drives the CLIENT startRecording() path instead. It runs two
+// independent record/stop cycles that differ ONLY in the session_assets key /
+// image.assetName:
+//   Case A (suspected bug): key "images/overlay.png",           assetName "overlay.png"
+//   Case B (control):       key "images/ct-journey-overlay.png", assetName "ct-journey-overlay.png"
+// Both point session_assets at the SAME real public image URL.
+//
+// FINDING (2026-07-23, daily-js 0.91.0, hush domain, region ap-mumbai-1):
+// The collision does NOT reproduce via startRecording(). Across 6 test
+// recordings (Case A with the "images/" prefix, Case A with a bare "overlay.png"
+// key, and Case B, both run individually and via the full A-then-B cycle), the
+// customer's real 1920x1080 image rendered full-screen EVERY time, in the
+// colliding case exactly as in the control. The compositor's worker logs
+// register the customer asset plus the 5 bundled defaults (the bundled
+// overlay.png shows up at 640x360), and the customer's overlay.png wins. No
+// black frame, no green "asset lookup failed" fill, no built-in graphic.
+//
+// So the "asset registration is non-deterministic" behavior seen earlier was
+// NOT this collision. The black recordings correlated with sessions that had no
+// live camera video track when startRecording() fired (the compositor only
+// composites tracks that are actually publishing). The runs where the verbose
+// "Parsed asset metadata" log block was missing still rendered the real image
+// correctly, so a missing asset-fetch log line is a logging artifact, not proof
+// the asset failed to load. To make each run deterministic this demo now waits
+// for the local video track to go live (and a short compositor warm-up) before
+// starting the recording. If the collision needs to be chased further, it looks
+// like a REST live-streaming-only path, which is deliberately out of scope here.
 //
 // session_assets can only be set when STARTING a recording, and the VCS asset
-// table is fixed at first start of a compositor instance. So each case must be
-// its own full cycle: join -> start -> ~10s -> stop -> leave (tear down the
-// compositor) -> (re)join for the next case. No mid-session swaps.
+// table is fixed at first start of a compositor instance. So each case is its
+// own full cycle: join -> wait for video -> start -> ~10s -> stop -> leave
+// (tear down the compositor) -> (re)join for the next case. No mid-session swaps.
 //
 // The demo only runs the record/stop cycles and reports each case's recording
 // id and status. It does NOT fetch, poll, download, or verify the recordings.
@@ -49,6 +72,12 @@ const SAFE_NAME = "ct-journey-overlay.png";
 const RECORD_MS = 10_000; // ~10s of recording per case
 const RECORDING_STARTED_TIMEOUT_MS = 30_000;
 const RECORDING_STOPPED_TIMEOUT_MS = 60_000;
+// How long to wait for the local camera track to go live after join, and a
+// short settle before starting the recording. Together these keep each run
+// deterministic: they stop us from recording a no-video black frame that is
+// easy to mistake for an asset-loading failure.
+const LOCAL_VIDEO_TIMEOUT_MS = 8_000;
+const WARMUP_MS = 1_500;
 
 type CaseKey = "A" | "B";
 
@@ -72,6 +101,23 @@ const INITIAL_RESULT: CaseResult = { status: "idle" };
 const sleep = (ms: number): Promise<void> =>
   new Promise((resolve) => setTimeout(resolve, ms));
 
+// Poll until the local camera video track is actually publishing, or time out.
+// The cloud compositor only composites tracks that are live, so starting a
+// recording before the local video is publishing can produce a black frame with
+// no participant tile. Returns true if video went live, false on timeout.
+async function waitForLocalVideo(
+  call: DailyCall,
+  timeoutMs: number
+): Promise<boolean> {
+  const start = Date.now();
+  while (Date.now() - start < timeoutMs) {
+    const state = call.participants()?.local?.tracks?.video?.state;
+    if (state === "playable" || state === "sendable") return true;
+    await sleep(250);
+  }
+  return false;
+}
+
 // Build the startRecording options for a case. Both cases use the identical
 // image URL; only the session_assets key and image.assetName vary.
 function buildRecordingOptions(
@@ -90,9 +136,7 @@ function buildRecordingOptions(
         mode: "grid",
         showImageOverlay: true,
         "image.assetName": def.assetName,
-        "image.zPosition": "background",
         "image.fullScreen": true,
-        "image.fullScreenScaleMode": "fit",
         "image.opacity": 1,
       },
     },
@@ -207,6 +251,21 @@ function VcsRepro(): React.JSX.Element {
 
       setStatus(`[Case ${def.key}] Joining room...`);
       await callObject.join({ url: roomUrl, token: token || undefined });
+
+      // Wait for the local camera to actually publish, then let the compositor
+      // warm up, before we start recording. This keeps output deterministic and
+      // avoids a no-video black frame being misread as an asset-loading failure.
+      setStatus(`[Case ${def.key}] Waiting for local video track...`);
+      const hasVideo = await waitForLocalVideo(
+        callObject,
+        LOCAL_VIDEO_TIMEOUT_MS
+      );
+      if (!hasVideo) {
+        setStatus(
+          `[Case ${def.key}] Local video never went live; recording may be audio-only / black. Continuing anyway.`
+        );
+      }
+      await sleep(WARMUP_MS);
 
       setStatus(
         `[Case ${def.key}] Starting recording (session_assets key "${sessionAssetKey}", image.assetName "${def.assetName}")...`
