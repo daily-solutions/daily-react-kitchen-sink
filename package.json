@@ -20,7 +20,6 @@
     "dev": "vite --host",
     "build": "tsc && vite build",
     "serve": "vite preview",
-    "vcs-repro": "node src/vcsLivestreamRepro.ts",
     "test": "eslint src/"
   },
   "browserslist": {
