@@ -1,7 +1,6 @@
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import { Prebuilt } from "./Prebuilt";
-import { VcsBackgroundRepro } from "./VcsBackgroundRepro";
 import { DailyProvider } from "@daily-co/daily-react";
 import App from "./App";
 
@@ -16,13 +15,10 @@ const root = createRoot(container);
 // Get the value from the url
 const urlParams = new URLSearchParams(window.location.search);
 const isPrebuilt = urlParams.get("prebuilt") ?? false;
-const isVcsRepro = urlParams.get("vcsrepro") ?? false;
 
 root.render(
   <StrictMode>
-    {isVcsRepro ? (
-      <VcsBackgroundRepro />
-    ) : isPrebuilt ? (
+    {isPrebuilt ? (
       <Prebuilt />
     ) : (
       <DailyProvider
