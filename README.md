@@ -75,8 +75,10 @@ there is no build step for the backend.
    npm run dev:all
    ```
    (or run `npm run server` and `npm run dev` in two terminals). Open
-   [http://localhost:3000](http://localhost:3000). At this point the presence
-   snapshot and 10s reconcile already work.
+   [http://localhost:3000](http://localhost:3000). The presence + webhooks page
+   is the default route, so it loads straight away; the presence snapshot and 10s
+   reconcile already work. (The full kitchen-sink demo is at `?kitchensink=true`,
+   and Daily Prebuilt at `?prebuilt=true`.)
 3. Expose the backend so Daily can reach it, and register the webhook:
    ```
    ngrok http 4000
