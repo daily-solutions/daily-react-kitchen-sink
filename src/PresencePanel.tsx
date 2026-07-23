@@ -13,6 +13,10 @@ const RECONCILE_INTERVAL_MS = 10_000;
 const WS_RETRY_MS = 2_000;
 const MAX_ROOMS = 10;
 const MAX_FEED = 50;
+// Presence data can trail reality by up to ~15s. Within this window we trust the
+// webhook (which is near-instant) over the presence snapshot, so a stale snapshot
+// can't resurrect someone who just left or drop someone who just joined.
+const PRESENCE_LAG_MS = 20_000;
 
 // One participant as returned by GET /presence.
 interface PresenceParticipant {
@@ -41,6 +45,9 @@ interface RosterParticipant {
   userName: string;
   room: string;
   joinTimeMs: number;
+  // When a webhook last touched this entry (0 if it came only from presence).
+  // Used so the reconcile won't override a recent webhook change with stale data.
+  lastWebhookMs: number;
 }
 
 type Roster = Record<string, RosterParticipant[]>;
@@ -71,6 +78,7 @@ function rosterFromPresence(data: PresenceResponse): Roster {
       userName: p.userName,
       room: p.room || room,
       joinTimeMs: Date.parse(p.joinTime),
+      lastWebhookMs: 0,
     }));
   }
   return roster;
@@ -105,6 +113,9 @@ export function PresencePanel(): ReactElement {
   // changes after we start watching, like a webhook consumer would.
   const seededRef = useRef(false);
   const eventIdRef = useRef(0);
+  // session keys (room:sessionId) a webhook removed recently, with the time. Used
+  // to stop a stale presence snapshot from resurrecting someone who just left.
+  const recentlyLeftRef = useRef<Map<string, number>>(new Map());
 
   const pushEvent = useCallback(
     (source: EventSource, kind: EventKind, room: string, userName: string) => {
@@ -135,32 +146,51 @@ export function PresencePanel(): ReactElement {
       }
       const data = (await res.json()) as PresenceResponse;
       const fresh = rosterFromPresence(data);
+      const nowMs = Date.now();
 
-      if (seededRef.current) {
-        // Diff against what we currently show, and log anything the webhook path
-        // missed as a "presence" event (the safety net catching a gap).
-        const freshByKey = new Map<string, RosterParticipant>();
-        for (const list of Object.values(fresh)) {
-          for (const p of list) freshByKey.set(rosterKey(p.room, p.sessionId), p);
-        }
-        const currentByKey = new Map<string, RosterParticipant>();
-        for (const list of Object.values(rosterRef.current)) {
-          for (const p of list)
-            currentByKey.set(rosterKey(p.room, p.sessionId), p);
-        }
-        for (const [key, p] of freshByKey) {
-          if (!currentByKey.has(key))
-            pushEvent("presence", "joined", p.room, p.userName);
-        }
-        for (const [key, p] of currentByKey) {
-          if (!freshByKey.has(key))
-            pushEvent("presence", "left", p.room, p.userName);
-        }
-      } else {
-        seededRef.current = true;
+      const freshByKey = new Map<string, RosterParticipant>();
+      for (const list of Object.values(fresh)) {
+        for (const p of list) freshByKey.set(rosterKey(p.room, p.sessionId), p);
+      }
+      const currentByKey = new Map<string, RosterParticipant>();
+      for (const list of Object.values(rosterRef.current)) {
+        for (const p of list) currentByKey.set(rosterKey(p.room, p.sessionId), p);
       }
 
-      setRoster(fresh);
+      // Forget stale entries in the recently-left guard.
+      for (const [key, leftMs] of recentlyLeftRef.current) {
+        if (nowMs - leftMs > PRESENCE_LAG_MS) recentlyLeftRef.current.delete(key);
+      }
+
+      // Merge presence into the webhook-driven roster. Webhooks win for recent
+      // changes: a stale presence snapshot must not resurrect someone a webhook
+      // just removed, nor drop someone a webhook just added. Presence only
+      // corrects drift older than the lag window.
+      const merged = new Map<string, RosterParticipant>();
+      for (const [key, cur] of currentByKey) {
+        if (freshByKey.has(key)) {
+          merged.set(key, cur); // present in both
+        } else if (nowMs - cur.lastWebhookMs < PRESENCE_LAG_MS) {
+          merged.set(key, cur); // presence lagging behind a recent webhook join
+        } else if (seededRef.current) {
+          pushEvent("presence", "left", cur.room, cur.userName); // real drift
+        }
+      }
+      for (const [key, p] of freshByKey) {
+        if (currentByKey.has(key)) continue;
+        const leftMs = recentlyLeftRef.current.get(key);
+        if (leftMs !== undefined && nowMs - leftMs < PRESENCE_LAG_MS) continue; // just left
+        merged.set(key, p);
+        if (seededRef.current) pushEvent("presence", "joined", p.room, p.userName);
+      }
+
+      seededRef.current = true;
+
+      const next: Roster = {};
+      for (const p of merged.values()) {
+        (next[p.room] ??= []).push(p);
+      }
+      setRoster(next);
       setLastReconcile(new Date().toLocaleTimeString());
       setError(null);
     } catch (err) {
@@ -175,20 +205,40 @@ export function PresencePanel(): ReactElement {
   // Apply one live webhook message to the roster.
   const handleWebhook = useCallback(
     (msg: WebhookMessage) => {
+      const key = rosterKey(msg.room, msg.session_id);
+      const nowMs = Date.now();
       if (msg.type === "participant.joined") {
+        recentlyLeftRef.current.delete(key);
         setRoster((prev) => {
-          const list = prev[msg.room] ? [...prev[msg.room]] : [];
-          if (list.some((p) => p.sessionId === msg.session_id)) return prev;
-          list.push({
-            sessionId: msg.session_id,
-            userName: msg.user_name,
-            room: msg.room,
-            joinTimeMs: msg.joined_at * 1000,
-          });
-          return { ...prev, [msg.room]: list };
+          const list = prev[msg.room] ?? [];
+          if (list.some((p) => p.sessionId === msg.session_id)) {
+            // Already present: just refresh the webhook recency stamp.
+            return {
+              ...prev,
+              [msg.room]: list.map((p) =>
+                p.sessionId === msg.session_id
+                  ? { ...p, lastWebhookMs: nowMs }
+                  : p,
+              ),
+            };
+          }
+          return {
+            ...prev,
+            [msg.room]: [
+              ...list,
+              {
+                sessionId: msg.session_id,
+                userName: msg.user_name,
+                room: msg.room,
+                joinTimeMs: msg.joined_at * 1000,
+                lastWebhookMs: nowMs,
+              },
+            ],
+          };
         });
         pushEvent("webhook", "joined", msg.room, msg.user_name);
       } else {
+        recentlyLeftRef.current.set(key, nowMs);
         setRoster((prev) => {
           const list = prev[msg.room];
           if (!list) return prev;
