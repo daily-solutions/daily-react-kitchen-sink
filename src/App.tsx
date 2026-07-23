@@ -24,6 +24,8 @@ import {
   useTranscription,
 } from "@daily-co/daily-react";
 
+import { PresencePanel } from "./PresencePanel";
+
 import "./styles.css";
 
 console.info("Daily version: %s", Daily.version());
@@ -625,6 +627,7 @@ export default function App() {
       <div>
         CPU load: {cpuLoad.state} {cpuLoad.reason}
       </div>
+      <PresencePanel />
     </>
   );
 }
