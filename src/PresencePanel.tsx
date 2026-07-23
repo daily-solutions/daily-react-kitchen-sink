@@ -1,8 +1,16 @@
-import { type ReactElement, useCallback, useEffect, useRef, useState } from "react";
+import {
+  type ReactElement,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 
-// Poll no more than once every 15s (per the Presence API docs); data can lag up
-// to 15s behind reality.
-const POLL_INTERVAL_MS = 15_000;
+// The Presence API can lag up to ~15s and we reconcile every 10s. Webhooks fill
+// the gap: they arrive within a second or two, so the roster updates live.
+const RECONCILE_INTERVAL_MS = 10_000;
+const WS_RETRY_MS = 2_000;
 const MAX_ROOMS = 10;
 const MAX_FEED = 50;
 
@@ -10,165 +18,257 @@ const MAX_FEED = 50;
 interface PresenceParticipant {
   room: string;
   id: string;
-  userId: string | null;
   userName: string;
-  mtgSessionId: string;
   joinTime: string;
-  duration: number;
 }
 
 // GET /presence returns a map of room name -> currently present participants.
 type PresenceResponse = Record<string, PresenceParticipant[]>;
 
-interface PresenceRoom {
+// A live message pushed by our server over the WebSocket, one per webhook event.
+interface WebhookMessage {
+  type: "participant.joined" | "participant.left";
   room: string;
-  participants: PresenceParticipant[];
-  latestJoin: number;
+  session_id: string;
+  user_name: string;
+  joined_at: number;
+  duration?: number;
 }
 
-type PresenceEventType = "joined" | "left";
+// Normalized participant used in the roster, from either source.
+interface RosterParticipant {
+  sessionId: string;
+  userName: string;
+  room: string;
+  joinTimeMs: number;
+}
+
+type Roster = Record<string, RosterParticipant[]>;
+
+type EventSource = "webhook" | "presence";
+type EventKind = "joined" | "left";
 
 interface DerivedEvent {
   key: string;
-  type: PresenceEventType;
+  kind: EventKind;
+  source: EventSource;
   room: string;
   userName: string;
   at: string;
 }
 
-// A stable key for one participant in one room, so the same id in two rooms is
-// treated as two distinct people.
-function participantKey(p: PresenceParticipant): string {
-  return `${p.room}:${p.id}`;
+type WsStatus = "connecting" | "live" | "closed";
+
+function rosterKey(room: string, sessionId: string): string {
+  return `${room}:${sessionId}`;
+}
+
+function rosterFromPresence(data: PresenceResponse): Roster {
+  const roster: Roster = {};
+  for (const [room, participants] of Object.entries(data)) {
+    roster[room] = participants.map((p) => ({
+      sessionId: p.id,
+      userName: p.userName,
+      room: p.room || room,
+      joinTimeMs: Date.parse(p.joinTime),
+    }));
+  }
+  return roster;
 }
 
 /**
- * Presence API demo.
+ * Hybrid presence + webhooks demo.
  *
- * Instead of consuming participant.joined / participant.left webhooks, this
- * polls the /presence REST endpoint every 15s, renders a live roster of the 10
- * most recently active rooms, and derives synthetic "joined" / "left" events by
- * diffing each snapshot against the previous one. That diff is the direct
- * replacement for the two webhooks.
+ * This is the pattern we recommend when you need a live roster:
+ * - Presence API for the snapshot on load and a full reconcile every 10s (the
+ *   authoritative safety net).
+ * - Webhooks (participant.joined / participant.left) pushed from our server over
+ *   a WebSocket for the fast "in between" updates.
  *
- * The domain API key is never in the browser: the request goes to /api/presence,
- * which the Vite dev server proxies to api.daily.co with the Authorization
- * header added server-side (see vite.config.ts).
+ * The domain API key and webhook hmac live on the server (see server/index.ts).
+ * The browser only calls /api/presence and connects to /ws.
  */
 export function PresencePanel(): ReactElement {
-  const [rooms, setRooms] = useState<PresenceRoom[]>([]);
+  const [roster, setRoster] = useState<Roster>({});
   const [events, setEvents] = useState<DerivedEvent[]>([]);
   const [error, setError] = useState<string | null>(null);
-  const [lastUpdated, setLastUpdated] = useState<string | null>(null);
-  const [loading, setLoading] = useState(false);
+  const [lastReconcile, setLastReconcile] = useState<string | null>(null);
+  const [wsStatus, setWsStatus] = useState<WsStatus>("connecting");
 
-  // Previous snapshot, keyed by `${room}:${id}`, used to diff for join/left.
-  const prevRef = useRef<Map<string, PresenceParticipant>>(new Map());
-  // Skip event generation on the first successful poll: we only report changes
-  // that happen after we start listening, the same as a webhook consumer would.
+  // Mirror of roster for diffing during reconcile, kept in sync after each render.
+  const rosterRef = useRef<Roster>({});
+  useEffect(() => {
+    rosterRef.current = roster;
+  }, [roster]);
+
+  // Skip event logging on the first reconcile (the initial snapshot); only report
+  // changes after we start watching, like a webhook consumer would.
   const seededRef = useRef(false);
+  const eventIdRef = useRef(0);
 
-  const fetchPresence = useCallback(async (): Promise<void> => {
-    setLoading(true);
+  const pushEvent = useCallback(
+    (source: EventSource, kind: EventKind, room: string, userName: string) => {
+      const at = new Date().toISOString();
+      eventIdRef.current += 1;
+      const event: DerivedEvent = {
+        key: `${String(eventIdRef.current)}`,
+        kind,
+        source,
+        room,
+        userName,
+        at,
+      };
+      setEvents((prev) => [event, ...prev].slice(0, MAX_FEED));
+    },
+    [],
+  );
+
+  // Presence reconcile: the authoritative full snapshot.
+  const reconcile = useCallback(async (): Promise<void> => {
     try {
       const res = await fetch("/api/presence", {
         headers: { "Content-Type": "application/json" },
       });
-
       if (!res.ok) {
-        if (res.status === 401 || res.status === 400) {
-          setError(
-            "Auth failed (check DAILY_API_KEY in .env.local, then restart the dev server).",
-          );
-        } else if (res.status === 429) {
-          setError("Rate limited by the Presence API. Polling will retry.");
-        } else {
-          setError(`Presence request failed: HTTP ${res.status}.`);
-        }
+        setError(`Presence request failed: HTTP ${String(res.status)}.`);
         return;
       }
-
       const data = (await res.json()) as PresenceResponse;
+      const fresh = rosterFromPresence(data);
 
-      // Flatten the current snapshot into a keyed map.
-      const currentMap = new Map<string, PresenceParticipant>();
-      for (const participants of Object.values(data)) {
-        for (const p of participants) {
-          currentMap.set(participantKey(p), p);
-        }
-      }
-
-      // Diff against the previous snapshot to derive joined/left events.
       if (seededRef.current) {
-        const now = new Date().toISOString();
-        const newEvents: DerivedEvent[] = [];
-
-        for (const [key, p] of currentMap) {
-          if (!prevRef.current.has(key)) {
-            console.log("presence: joined", { room: p.room, participant: p });
-            newEvents.push({
-              key: `${key}:joined:${now}`,
-              type: "joined",
-              room: p.room,
-              userName: p.userName,
-              at: now,
-            });
-          }
+        // Diff against what we currently show, and log anything the webhook path
+        // missed as a "presence" event (the safety net catching a gap).
+        const freshByKey = new Map<string, RosterParticipant>();
+        for (const list of Object.values(fresh)) {
+          for (const p of list) freshByKey.set(rosterKey(p.room, p.sessionId), p);
         }
-        for (const [key, p] of prevRef.current) {
-          if (!currentMap.has(key)) {
-            console.log("presence: left", { room: p.room, participant: p });
-            newEvents.push({
-              key: `${key}:left:${now}`,
-              type: "left",
-              room: p.room,
-              userName: p.userName,
-              at: now,
-            });
-          }
+        const currentByKey = new Map<string, RosterParticipant>();
+        for (const list of Object.values(rosterRef.current)) {
+          for (const p of list)
+            currentByKey.set(rosterKey(p.room, p.sessionId), p);
         }
-
-        if (newEvents.length > 0) {
-          setEvents((prev) => [...newEvents, ...prev].slice(0, MAX_FEED));
+        for (const [key, p] of freshByKey) {
+          if (!currentByKey.has(key))
+            pushEvent("presence", "joined", p.room, p.userName);
+        }
+        for (const [key, p] of currentByKey) {
+          if (!freshByKey.has(key))
+            pushEvent("presence", "left", p.room, p.userName);
         }
       } else {
         seededRef.current = true;
       }
 
-      prevRef.current = currentMap;
-
-      // Rank rooms by their most recent participant joinTime, keep the top 10.
-      const rankedRooms: PresenceRoom[] = Object.entries(data)
-        .map(([room, participants]) => ({
-          room,
-          participants,
-          latestJoin: participants.reduce(
-            (max, p) => Math.max(max, new Date(p.joinTime).getTime()),
-            0,
-          ),
-        }))
-        .sort((a, b) => b.latestJoin - a.latestJoin)
-        .slice(0, MAX_ROOMS);
-
-      setRooms(rankedRooms);
-      setLastUpdated(new Date().toLocaleTimeString());
+      setRoster(fresh);
+      setLastReconcile(new Date().toLocaleTimeString());
       setError(null);
     } catch (err) {
       setError(
-        `Could not reach the Presence proxy: ${
+        `Could not reach the presence backend: ${
           err instanceof Error ? err.message : String(err)
         }`,
       );
-    } finally {
-      setLoading(false);
     }
+  }, [pushEvent]);
+
+  // Apply one live webhook message to the roster.
+  const handleWebhook = useCallback(
+    (msg: WebhookMessage) => {
+      if (msg.type === "participant.joined") {
+        setRoster((prev) => {
+          const list = prev[msg.room] ? [...prev[msg.room]] : [];
+          if (list.some((p) => p.sessionId === msg.session_id)) return prev;
+          list.push({
+            sessionId: msg.session_id,
+            userName: msg.user_name,
+            room: msg.room,
+            joinTimeMs: msg.joined_at * 1000,
+          });
+          return { ...prev, [msg.room]: list };
+        });
+        pushEvent("webhook", "joined", msg.room, msg.user_name);
+      } else {
+        setRoster((prev) => {
+          const list = prev[msg.room];
+          if (!list) return prev;
+          const next = list.filter((p) => p.sessionId !== msg.session_id);
+          const copy = { ...prev };
+          if (next.length > 0) copy[msg.room] = next;
+          else delete copy[msg.room];
+          return copy;
+        });
+        pushEvent("webhook", "left", msg.room, msg.user_name);
+      }
+    },
+    [pushEvent],
+  );
+
+  // Initial snapshot + periodic reconcile.
+  useEffect(() => {
+    void reconcile();
+    const interval = setInterval(() => void reconcile(), RECONCILE_INTERVAL_MS);
+    return () => clearInterval(interval);
+  }, [reconcile]);
+
+  // WebSocket for live webhook events, with auto-reconnect.
+  const wsUrl = useMemo(() => {
+    const proto = window.location.protocol === "https:" ? "wss:" : "ws:";
+    return `${proto}//${window.location.host}/ws`;
   }, []);
 
   useEffect(() => {
-    void fetchPresence();
-    const interval = setInterval(() => void fetchPresence(), POLL_INTERVAL_MS);
-    return () => clearInterval(interval);
-  }, [fetchPresence]);
+    let unmounted = false;
+    let socket: WebSocket | null = null;
+    let retry: number | undefined;
+
+    const connect = (): void => {
+      setWsStatus("connecting");
+      socket = new WebSocket(wsUrl);
+      socket.onopen = () => setWsStatus("live");
+      socket.onmessage = (ev: MessageEvent) => {
+        try {
+          const msg = JSON.parse(ev.data as string) as WebhookMessage;
+          handleWebhook(msg);
+        } catch {
+          // ignore malformed messages
+        }
+      };
+      socket.onclose = () => {
+        setWsStatus("closed");
+        if (!unmounted) retry = window.setTimeout(connect, WS_RETRY_MS);
+      };
+      socket.onerror = () => socket?.close();
+    };
+    connect();
+
+    return () => {
+      unmounted = true;
+      if (retry) clearTimeout(retry);
+      socket?.close();
+    };
+  }, [wsUrl, handleWebhook]);
+
+  const rankedRooms = useMemo(() => {
+    return Object.entries(roster)
+      .map(([room, participants]) => ({
+        room,
+        participants,
+        latestJoin: participants.reduce(
+          (max, p) => Math.max(max, p.joinTimeMs),
+          0,
+        ),
+      }))
+      .sort((a, b) => b.latestJoin - a.latestJoin)
+      .slice(0, MAX_ROOMS);
+  }, [roster]);
+
+  const wsLabel =
+    wsStatus === "live"
+      ? "live"
+      : wsStatus === "connecting"
+        ? "connecting…"
+        : "closed (retrying)";
 
   return (
     <div
@@ -178,7 +278,7 @@ export function PresencePanel(): ReactElement {
         borderRadius: 8,
         padding: 12,
         marginTop: 16,
-        maxWidth: 600,
+        maxWidth: 640,
       }}
     >
       <div
@@ -189,15 +289,15 @@ export function PresencePanel(): ReactElement {
           gap: 8,
         }}
       >
-        <strong>Presence API: {MAX_ROOMS} most recent rooms</strong>
-        <button type="button" onClick={() => void fetchPresence()}>
-          Refresh presence
+        <strong>Presence + webhooks: {MAX_ROOMS} most recent rooms</strong>
+        <button type="button" onClick={() => void reconcile()}>
+          Refresh now
         </button>
       </div>
 
       <div style={{ fontSize: 12, color: "#666", marginTop: 4 }}>
-        Polls /api/presence every 15s. Last updated: {lastUpdated ?? "never"}
-        {loading ? " (refreshing…)" : ""}
+        Webhook stream: <strong>{wsLabel}</strong> · Presence reconcile every 10s
+        · Last reconcile: {lastReconcile ?? "never"}
       </div>
 
       {error && (
@@ -207,21 +307,21 @@ export function PresencePanel(): ReactElement {
       )}
 
       <h4 style={{ marginBottom: 4 }}>Rooms</h4>
-      {rooms.length === 0 ? (
+      {rankedRooms.length === 0 ? (
         <div style={{ color: "#666" }}>
           No active rooms on this domain yet. Join a room to see presence here.
         </div>
       ) : (
-        rooms.map((r) => (
+        rankedRooms.map((r) => (
           <div key={r.room} style={{ marginBottom: 8 }}>
             <div>
               <strong>{r.room}</strong> ({r.participants.length})
             </div>
             <ul style={{ margin: "4px 0", paddingLeft: 20 }}>
               {r.participants.map((p) => (
-                <li key={p.id}>
-                  {p.userName || "(no name)"} : {p.id} : joined{" "}
-                  {new Date(p.joinTime).toLocaleTimeString()} : {p.duration}s
+                <li key={p.sessionId}>
+                  {p.userName || "(no name)"} : {p.sessionId} : joined{" "}
+                  {new Date(p.joinTimeMs).toLocaleTimeString()}
                 </li>
               ))}
             </ul>
@@ -229,7 +329,7 @@ export function PresencePanel(): ReactElement {
         ))
       )}
 
-      <h4 style={{ marginBottom: 4 }}>Derived join/left events</h4>
+      <h4 style={{ marginBottom: 4 }}>Join/left events</h4>
       {events.length === 0 ? (
         <div style={{ color: "#666" }}>
           Watching for changes. Join or leave a room to see events appear.
@@ -246,8 +346,18 @@ export function PresencePanel(): ReactElement {
         >
           {events.map((e) => (
             <li key={e.key}>
-              {new Date(e.at).toLocaleTimeString()} : {e.room} :{" "}
-              <strong>{e.type}</strong> {e.userName || "(no name)"}
+              {new Date(e.at).toLocaleTimeString()} :{" "}
+              <span
+                style={{
+                  fontSize: 11,
+                  padding: "0 4px",
+                  borderRadius: 4,
+                  background: e.source === "webhook" ? "#e6f0ff" : "#eee",
+                }}
+              >
+                {e.source}
+              </span>{" "}
+              {e.room} : <strong>{e.kind}</strong> {e.userName || "(no name)"}
             </li>
           ))}
         </ul>
