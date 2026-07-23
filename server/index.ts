@@ -32,8 +32,21 @@ interface RosterMessage {
   event_ts?: number;
 }
 
+// Express Request with the raw body buffer captured for signature verification.
+interface RawBodyRequest extends Request {
+  rawBody?: Buffer;
+}
+
 const app = express();
-app.use(express.json());
+// Capture the raw body so we verify the webhook signature against the exact
+// bytes Daily signed, not a re-serialized object.
+app.use(
+  express.json({
+    verify: (req, _res, buf) => {
+      (req as RawBodyRequest).rawBody = buf;
+    },
+  }),
+);
 
 // Presence snapshot. The domain API key stays here on the server; the browser
 // only ever calls /api/presence.
@@ -69,11 +82,12 @@ app.post("/api/daily-webhook", (req: Request, res: Response) => {
 
   const timestamp = req.header("X-Webhook-Timestamp");
   const signature = req.header("X-Webhook-Signature");
+  const rawBody = (req as RawBodyRequest).rawBody?.toString("utf8") ?? "";
   if (
     !DAILY_WEBHOOK_HMAC ||
     !timestamp ||
     !signature ||
-    !verifySignature(timestamp, body, DAILY_WEBHOOK_HMAC, signature)
+    !verifySignature(timestamp, rawBody, DAILY_WEBHOOK_HMAC, signature)
   ) {
     res.sendStatus(401);
     return;

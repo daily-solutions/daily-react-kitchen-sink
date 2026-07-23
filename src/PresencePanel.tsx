@@ -237,7 +237,7 @@ export function PresencePanel(): ReactElement {
           };
         });
         pushEvent("webhook", "joined", msg.room, msg.user_name);
-      } else {
+      } else if (msg.type === "participant.left") {
         recentlyLeftRef.current.set(key, nowMs);
         setRoster((prev) => {
           const list = prev[msg.room];
