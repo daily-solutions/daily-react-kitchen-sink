@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useRef, useState } from "react";
 import Daily, {
   DailyEventObject,
   DailyStreamingOptions,
@@ -9,7 +9,6 @@ import {
   useDailyEvent,
   useRecording,
 } from "@daily-co/daily-react";
-import { getRecording, getRecordingAccessLink } from "./dailyRecordings";
 
 // ---------------------------------------------------------------------------
 // T-2904: VCS overlay-asset name-collision repro
@@ -31,16 +30,17 @@ import { getRecording, getRecordingAccessLink } from "./dailyRecordings";
 // table is fixed at first start of a compositor instance. So each case must be
 // its own full cycle: join -> start -> ~10s -> stop -> leave (tear down the
 // compositor) -> (re)join for the next case. No mid-session swaps.
+//
+// The demo only runs the record/stop cycles and reports each case's recording
+// id and status. It does NOT fetch, poll, download, or verify the recordings.
+// Check the recordings yourself afterward (Daily dashboard, REST API, or
+// ffmpeg) using the reported recording ids.
 // ---------------------------------------------------------------------------
 
 // Real public image the cloud compositor fetches over the network. Must be a
 // public URL, NOT localhost (Daily's compositor runs server-side).
 const CUSTOMER_IMAGE_URL =
   "https://ctshare.blob.core.windows.net/ct-journey/overlay.png";
-
-// Local copy of the SAME image, used only as an on-screen reference to compare
-// against the extracted recording frames. Not used as the session_assets source.
-const LOCAL_REFERENCE_IMAGE = "/vcs-repro/ct-journey-overlay.png";
 
 // One of the bundled default filenames shipped by daily:baseline.
 const COLLIDING_NAME = "overlay.png";
@@ -49,10 +49,6 @@ const SAFE_NAME = "ct-journey-overlay.png";
 const RECORD_MS = 10_000; // ~10s of recording per case
 const RECORDING_STARTED_TIMEOUT_MS = 30_000;
 const RECORDING_STOPPED_TIMEOUT_MS = 60_000;
-const INITIAL_POLL_WAIT_MS = 30_000; // wait before first status poll
-const POLL_INTERVAL_MS = 5_000;
-const POLL_TIMEOUT_MS = 4 * 60_000; // 4 minutes, then "still processing"
-const FRAME_SEEK_SECONDS = 3;
 
 type CaseKey = "A" | "B";
 
@@ -63,24 +59,11 @@ interface CaseDef {
   sessionAssetKey: string;
 }
 
-type CaseStatus =
-  | "idle"
-  | "recording"
-  | "stopping"
-  | "polling"
-  | "extracting"
-  | "done"
-  | "still-processing"
-  | "error";
+type CaseStatus = "idle" | "recording" | "stopping" | "done" | "error";
 
 interface CaseResult {
   status: CaseStatus;
   recordingId?: string;
-  videoWidth?: number;
-  videoHeight?: number;
-  downloadLink?: string;
-  avgColor?: [number, number, number];
-  tainted?: boolean;
   message?: string;
 }
 
@@ -104,129 +87,16 @@ function buildRecordingOptions(
         [sessionAssetKey]: CUSTOMER_IMAGE_URL,
       },
       composition_params: {
+        mode: "grid",
         showImageOverlay: true,
         "image.assetName": def.assetName,
+        "image.zPosition": "background",
         "image.fullScreen": true,
+        "image.fullScreenScaleMode": "fit",
+        "image.opacity": 1,
       },
     },
   };
-}
-
-// Compute a coarse average RGB from a canvas. Returns null if the canvas is
-// tainted (CORS) so getImageData throws a SecurityError.
-function averageColor(
-  ctx: CanvasRenderingContext2D,
-  width: number,
-  height: number
-): [number, number, number] | null {
-  if (width === 0 || height === 0) return null;
-  try {
-    const { data } = ctx.getImageData(0, 0, width, height);
-    let r = 0;
-    let g = 0;
-    let b = 0;
-    let count = 0;
-    // Sample ~10k pixels to keep it fast on large frames.
-    const stride = 4 * Math.max(1, Math.floor((width * height) / 10_000));
-    for (let i = 0; i + 2 < data.length; i += stride) {
-      r += data[i];
-      g += data[i + 1];
-      b += data[i + 2];
-      count += 1;
-    }
-    if (count === 0) return null;
-    return [
-      Math.round(r / count),
-      Math.round(g / count),
-      Math.round(b / count),
-    ];
-  } catch {
-    // Tainted canvas (signed URL did not send CORS headers). Expected fallback.
-    return null;
-  }
-}
-
-function colorDistance(
-  a: [number, number, number],
-  b: [number, number, number]
-): number {
-  return Math.round(
-    Math.sqrt(
-      (a[0] - b[0]) ** 2 + (a[1] - b[1]) ** 2 + (a[2] - b[2]) ** 2
-    )
-  );
-}
-
-interface ExtractResult {
-  width: number;
-  height: number;
-  avgColor: [number, number, number] | null;
-}
-
-// Load a video URL, seek a few seconds in, and draw the current frame onto the
-// provided (visible) canvas. Drawing always works; reading pixels may fail on a
-// tainted canvas, which averageColor() handles.
-function extractFrameToCanvas(
-  url: string,
-  canvas: HTMLCanvasElement
-): Promise<ExtractResult> {
-  return new Promise((resolve, reject) => {
-    const video = document.createElement("video");
-    video.crossOrigin = "anonymous";
-    video.muted = true;
-    video.preload = "auto";
-    video.playsInline = true;
-
-    const cleanup = (): void => {
-      video.removeAttribute("src");
-      video.load();
-    };
-
-    const fail = (msg: string): void => {
-      cleanup();
-      reject(new Error(msg));
-    };
-
-    video.addEventListener("error", () => {
-      fail("Failed to load recording video for frame extraction.");
-    });
-
-    video.addEventListener(
-      "loadeddata",
-      () => {
-        const duration = video.duration;
-        const seekTo =
-          Number.isFinite(duration) && duration > 0
-            ? Math.min(FRAME_SEEK_SECONDS, duration / 2)
-            : FRAME_SEEK_SECONDS;
-
-        video.addEventListener(
-          "seeked",
-          () => {
-            const width = video.videoWidth;
-            const height = video.videoHeight;
-            canvas.width = width;
-            canvas.height = height;
-            const ctx = canvas.getContext("2d");
-            if (!ctx) {
-              fail("Could not get 2d canvas context.");
-              return;
-            }
-            ctx.drawImage(video, 0, 0, width, height);
-            const avgColor = averageColor(ctx, width, height);
-            resolve({ width, height, avgColor });
-            cleanup();
-          },
-          { once: true }
-        );
-
-        video.currentTime = seekTo;
-      },
-      { once: true }
-    );
-
-    video.src = url;
-  });
 }
 
 function VcsRepro(): React.JSX.Element {
@@ -244,12 +114,6 @@ function VcsRepro(): React.JSX.Element {
   const [status, setStatus] = useState("Idle. Enter a room URL to begin.");
   const [caseA, setCaseA] = useState<CaseResult>(INITIAL_RESULT);
   const [caseB, setCaseB] = useState<CaseResult>(INITIAL_RESULT);
-
-  const caseACanvasRef = useRef<HTMLCanvasElement>(null);
-  const caseBCanvasRef = useRef<HTMLCanvasElement>(null);
-  const referenceCanvasRef = useRef<HTMLCanvasElement>(null);
-  // Average color of the real reference image, for coarse comparison.
-  const referenceAvgRef = useRef<[number, number, number] | null>(null);
 
   // Resolvers for awaiting recording lifecycle events.
   const startedResolveRef = useRef<((recordingId: string) => void) | null>(
@@ -294,30 +158,6 @@ function VcsRepro(): React.JSX.Element {
   useDailyEvent("track-started", logEvent);
   useDailyEvent("error", logEvent);
 
-  // Draw the local reference image to its canvas on mount and cache its
-  // average color for the coarse comparison.
-  useEffect(() => {
-    const canvas = referenceCanvasRef.current;
-    if (!canvas) return;
-    const img = new Image();
-    img.onload = () => {
-      canvas.width = img.naturalWidth;
-      canvas.height = img.naturalHeight;
-      const ctx = canvas.getContext("2d");
-      if (!ctx) return;
-      ctx.drawImage(img, 0, 0);
-      referenceAvgRef.current = averageColor(
-        ctx,
-        canvas.width,
-        canvas.height
-      );
-    };
-    img.onerror = () => {
-      console.error("Failed to load local reference image", LOCAL_REFERENCE_IMAGE);
-    };
-    img.src = LOCAL_REFERENCE_IMAGE;
-  }, []);
-
   const waitForRecordingStarted = useCallback(
     (timeoutMs: number): Promise<string> =>
       new Promise((resolve, reject) => {
@@ -348,82 +188,11 @@ function VcsRepro(): React.JSX.Element {
     []
   );
 
-  // Poll the recording status, then extract a frame and compare it against the
-  // local reference image.
-  const verifyRecording = useCallback(
-    async (
-      recordingId: string,
-      canvasRef: React.RefObject<HTMLCanvasElement | null>,
-      setCase: React.Dispatch<React.SetStateAction<CaseResult>>
-    ): Promise<void> => {
-      setCase((prev) => ({ ...prev, status: "polling", recordingId }));
-      await sleep(INITIAL_POLL_WAIT_MS);
-
-      const deadline = Date.now() + POLL_TIMEOUT_MS;
-      let finished = false;
-      while (Date.now() < deadline) {
-        const rec = await getRecording(recordingId);
-        if (rec.status === "finished") {
-          finished = true;
-          break;
-        }
-        await sleep(POLL_INTERVAL_MS);
-      }
-
-      if (!finished) {
-        setCase((prev) => ({
-          ...prev,
-          status: "still-processing",
-          message:
-            "Recording still processing after the timeout. Try refetching in a bit.",
-        }));
-        return;
-      }
-
-      setCase((prev) => ({ ...prev, status: "extracting" }));
-      const link = await getRecordingAccessLink(recordingId);
-
-      const canvas = canvasRef.current;
-      if (!canvas) {
-        setCase((prev) => ({
-          ...prev,
-          status: "error",
-          downloadLink: link.download_link,
-          message: "Canvas not mounted for frame extraction.",
-        }));
-        return;
-      }
-
-      const frame = await extractFrameToCanvas(link.download_link, canvas);
-      const refAvg = referenceAvgRef.current;
-      let message: string;
-      if (frame.avgColor && refAvg) {
-        const dist = colorDistance(frame.avgColor, refAvg);
-        message = `Coarse avg-color distance from reference image: ${dist} (lower = closer to the real image).`;
-      } else {
-        message =
-          "Pixel read blocked (tainted canvas / no CORS headers). Compare visually against the reference.";
-      }
-
-      setCase((prev) => ({
-        ...prev,
-        status: "done",
-        downloadLink: link.download_link,
-        videoWidth: frame.width,
-        videoHeight: frame.height,
-        avgColor: frame.avgColor ?? undefined,
-        tainted: frame.avgColor === null,
-        message,
-      }));
-    },
-    []
-  );
-
-  // Run one full independent cycle for a single case.
+  // Run one full independent cycle for a single case: join -> start -> ~10s ->
+  // stop -> leave. Marks the case "done" with its recording id. No verification.
   const runSingleCase = useCallback(
     async (
       def: CaseDef,
-      canvasRef: React.RefObject<HTMLCanvasElement | null>,
       setCase: React.Dispatch<React.SetStateAction<CaseResult>>
     ): Promise<void> => {
       if (!callObject) throw new Error("Call object not ready.");
@@ -474,14 +243,17 @@ function VcsRepro(): React.JSX.Element {
           ...prev,
           status: "error",
           message:
-            "No recordingId came back on recording-started; cannot fetch the recording.",
+            "No recordingId came back on recording-started. Check the recordings dashboard manually.",
         }));
         return;
       }
 
-      setStatus(`[Case ${def.key}] Verifying recording ${recordingId}...`);
-      await verifyRecording(recordingId, canvasRef, setCase);
-      setStatus(`[Case ${def.key}] Done.`);
+      setCase((prev) => ({
+        ...prev,
+        status: "done",
+        message: "Record/stop cycle finished. Check this recording id manually.",
+      }));
+      setStatus(`[Case ${def.key}] Done. Recording id: ${recordingId}`);
     },
     [
       callObject,
@@ -490,7 +262,6 @@ function VcsRepro(): React.JSX.Element {
       useBareKeyForCaseA,
       waitForRecordingStarted,
       waitForRecordingStopped,
-      verifyRecording,
     ]
   );
 
@@ -500,9 +271,9 @@ function VcsRepro(): React.JSX.Element {
       setBusy(true);
       try {
         if (key === "A") {
-          await runSingleCase(CASE_A, caseACanvasRef, setCaseA);
+          await runSingleCase(CASE_A, setCaseA);
         } else {
-          await runSingleCase(CASE_B, caseBCanvasRef, setCaseB);
+          await runSingleCase(CASE_B, setCaseB);
         }
       } catch (err) {
         console.error("Case run failed", err);
@@ -529,9 +300,11 @@ function VcsRepro(): React.JSX.Element {
       setCaseA(INITIAL_RESULT);
       setCaseB(INITIAL_RESULT);
       // Case A first (buggy colliding name), then B (safe control name).
-      await runSingleCase(CASE_A, caseACanvasRef, setCaseA);
-      await runSingleCase(CASE_B, caseBCanvasRef, setCaseB);
-      setStatus("Full repro complete. Compare Case A vs Case B below.");
+      await runSingleCase(CASE_A, setCaseA);
+      await runSingleCase(CASE_B, setCaseB);
+      setStatus(
+        "Full repro complete. Check both recording ids manually (dashboard / REST API / ffmpeg)."
+      );
     } catch (err) {
       console.error("Full repro failed", err);
       setStatus(`Error: ${err instanceof Error ? err.message : String(err)}`);
@@ -548,7 +321,9 @@ function VcsRepro(): React.JSX.Element {
         VCS layout. Both point <code>session_assets</code> at the same public image
         URL and differ only in the asset name. Case A uses the bundled default name{" "}
         <code>overlay.png</code> (expected bug: Daily&apos;s small built-in graphic
-        renders); Case B uses a safe name (expected: the real image renders).
+        renders); Case B uses a safe name (expected: the real image renders). The
+        demo only reports each case&apos;s recording id and status: check the
+        recordings yourself afterward (dashboard, REST API, or ffmpeg).
       </p>
 
       <div style={{ marginBottom: 12 }}>
@@ -619,29 +394,12 @@ function VcsRepro(): React.JSX.Element {
           heading="Case A — colliding name (bug)"
           def={CASE_A}
           result={caseA}
-          canvasRef={caseACanvasRef}
         />
         <CaseCard
           heading="Case B — safe name (control)"
           def={CASE_B}
           result={caseB}
-          canvasRef={caseBCanvasRef}
         />
-        <div style={{ flex: "1 1 300px", minWidth: 280 }}>
-          <h3>Reference image (local)</h3>
-          <p style={{ fontSize: 13, color: "#555" }}>
-            Real 1920x1080 customer image ({LOCAL_REFERENCE_IMAGE}). Case B should
-            match this; Case A should not.
-          </p>
-          <canvas
-            ref={referenceCanvasRef}
-            style={{
-              width: "100%",
-              border: "1px solid #ccc",
-              background: "#000",
-            }}
-          />
-        </div>
       </div>
     </div>
   );
@@ -663,12 +421,10 @@ function CaseCard({
   heading,
   def,
   result,
-  canvasRef,
 }: {
   heading: string;
   def: CaseDef;
   result: CaseResult;
-  canvasRef: React.RefObject<HTMLCanvasElement | null>;
 }): React.JSX.Element {
   return (
     <div style={{ flex: "1 1 300px", minWidth: 280 }}>
@@ -679,35 +435,9 @@ function CaseCard({
         </li>
         <li>status: {result.status}</li>
         <li>recording id: {result.recordingId ?? "n/a"}</li>
-        <li>
-          frame size:{" "}
-          {result.videoWidth && result.videoHeight
-            ? `${result.videoWidth}x${result.videoHeight}`
-            : "n/a"}
-        </li>
-        <li>
-          avg color:{" "}
-          {result.avgColor ? result.avgColor.join(", ") : "n/a"}
-          {result.tainted ? " (pixel read blocked)" : ""}
-        </li>
       </ul>
       {result.message && (
         <p style={{ fontSize: 12, color: "#333" }}>{result.message}</p>
-      )}
-      <canvas
-        ref={canvasRef}
-        style={{
-          width: "100%",
-          border: "1px solid #ccc",
-          background: "#000",
-        }}
-      />
-      {result.downloadLink && (
-        <p style={{ fontSize: 12 }}>
-          <a href={result.downloadLink} download>
-            Download raw recording
-          </a>
-        </p>
       )}
     </div>
   );
