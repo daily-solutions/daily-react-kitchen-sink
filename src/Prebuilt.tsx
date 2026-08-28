@@ -5,12 +5,14 @@ import {
   useAppMessage,
   useCallFrame,
   useDaily,
+  useDailyEvent,
   useParticipantCounts,
   useParticipantIds,
 } from "@daily-co/daily-react";
 import {
   DailyEventObject,
   DailyEventObjectAppMessage,
+  DailyEventObjectCustomButtonClick,
 } from "@daily-co/daily-js";
 
 const App = () => {
@@ -35,6 +37,30 @@ const App = () => {
     onParticipantLeft: logEvent,
     onParticipantUpdated: logEvent,
   });
+
+  useDailyEvent(
+    "custom-button-click",
+    useCallback(
+      (evt: DailyEventObjectCustomButtonClick) => {
+        if (evt.button_id === "custom-screenshare") {
+          callObject?.startScreenShare({
+            displayMediaOptions: {
+              audio: true,
+              selfBrowserSurface: "include",
+              surfaceSwitching: "include",
+              systemAudio: "include",
+              video: {
+                width: 1024,
+                height: 768,
+              },
+            },
+            screenVideoSendSettings: "motion-optimized",
+          });
+        }
+      },
+      [callObject],
+    ),
+  );
 
   type PrebuiltAppMessage = DailyEventObjectAppMessage<{
     date: string;
@@ -93,6 +119,15 @@ export const Prebuilt = () => {
       },
       userData: {
         avatar: "https://www.svgrepo.com/show/532036/cloud-rain-alt.svg",
+      },
+      customTrayButtons: {
+        "custom-screenshare": {
+          iconPath: "https://www.svgrepo.com/show/532036/cloud-rain-alt.svg",
+          iconPathDarkMode:
+            "https://www.svgrepo.com/show/532036/cloud-rain-alt.svg",
+          label: "Custom Screenshare",
+          tooltip: "Start screen share with custom settings",
+        },
       },
     },
     shouldCreateInstance: useCallback(() => Boolean(wrapperRef.current), []),
