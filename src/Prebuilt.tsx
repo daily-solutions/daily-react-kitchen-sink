@@ -2,16 +2,12 @@ import "./styles.css";
 import { useCallback, useEffect, useRef } from "react";
 import {
   DailyProvider,
-  useAppMessage,
   useCallFrame,
   useDaily,
   useParticipantCounts,
   useParticipantIds,
 } from "@daily-co/daily-react";
-import {
-  DailyEventObject,
-  DailyEventObjectAppMessage,
-} from "@daily-co/daily-js";
+import { DailyEventObject } from "@daily-co/daily-js";
 
 const App = () => {
   const callObject = useDaily();
@@ -36,45 +32,7 @@ const App = () => {
     onParticipantUpdated: logEvent,
   });
 
-  type PrebuiltAppMessage = DailyEventObjectAppMessage<{
-    date: string;
-    event: "chat-msg"; // There's other events too
-    message: string;
-    name: string;
-    room: string;
-  }>;
-
-  const sendAppMessage = useAppMessage({
-    onAppMessage: useCallback((message: PrebuiltAppMessage) => {
-      console.log(message);
-      switch (message.data.event) {
-        case "chat-msg":
-          console.log("Chat message:", message.data.message);
-          break;
-        default:
-          console.log("Unknown event:", message.data.event);
-      }
-    }, []),
-  });
-
-  return (
-    <>
-      <button
-        onClick={() =>
-          sendAppMessage({
-            event: "chat-msg",
-            date: Date.now().toString(),
-            message: "Hello from button!",
-            name: "button",
-            room: "main-room",
-          })
-        }
-      >
-        Send message
-      </button>
-      <span>{participantCount.present} participants</span>
-    </>
-  );
+  return <span>{participantCount.present} participants</span>;
 };
 
 export const Prebuilt = () => {
@@ -86,7 +44,9 @@ export const Prebuilt = () => {
       dailyConfig: {
         useDevicePreferenceCookies: true,
       },
-      url: "https://hush.daily.co/demo",
+      url: "https://hush.daily.co/closed-captions-demo",
+      token:
+        "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJyIjoiY2xvc2VkLWNhcHRpb25zLWRlbW8iLCJvIjp0cnVlLCJlbGMiOnRydWUsImFzdCI6ZmFsc2UsInAiOnsiY2EiOiJ0In0sImQiOiI2ODNiODlmNC1iMWZkLTRmOTQtYjg0NS1lZjI2NjZlM2UyMTMiLCJpYXQiOjE3NzQ2MDA3NjZ9.P-Mc5gwQgqKnYTXD1R-RdRfxAh8F6A7ZJF5GJaX0xKA",
       iframeStyle: {
         width: "100%",
         height: "80vh",
