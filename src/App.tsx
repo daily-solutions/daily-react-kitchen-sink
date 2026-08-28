@@ -575,7 +575,31 @@ export default function App() {
         <br />
         <button onClick={stopCamera}>Camera Off</button>
         <button onClick={updateCameraOn}>Camera On</button> <br />
-        <button disabled={isRecording} onClick={() => startRecording()}>
+        <button
+          disabled={isRecording}
+          onClick={() =>
+            startRecording({
+              layout: {
+                preset: "custom",
+                composition_params: {
+                  "videoSettings.omitAudioOnly": false,
+                  "videoSettings.showParticipantLabels": true,
+                  "videoSettings.placeholder.bgColor": "#20232a",
+                  "videoSettings.preferScreenshare": true,
+                  "videoSettings.grid.useDominantForSharing": true,
+                  "videoSettings.roundedCorners": true,
+                  "videoSettings.cornerRadius_gu": 0.4,
+                  "videoSettings.highlight.color": "limegreen",
+                },
+                session_assets: {
+                  "user_white_64.png":
+                    "https://cdn.junolive.co/assets/ui/avatars-anon-user%403x.png",
+                },
+                composition_id: "daily:baseline",
+              },
+            })
+          }
+        >
           Start Recording
         </button>
         <button disabled={!isRecording} onClick={() => stopRecording()}>
