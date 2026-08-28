@@ -10,6 +10,22 @@
       content="Web site created using create-react-app"
     />
     <link rel="apple-touch-icon" href="/logo192.png" />
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="
+        default-src 'self' https://hush.ngrok.com;
+        script-src 'self' https://*.daily.co;
+        style-src 'self' 'unsafe-inline';
+        img-src 'self' data: blob:;
+        font-src 'self';
+        connect-src 'self' wss://*.daily.co https://*.daily.co;
+        media-src 'self' blob: https://*.daily.co;
+        object-src 'none';
+        base-uri 'self';
+        form-action 'self';
+        frame-src https://*.daily.co;
+        upgrade-insecure-requests;"
+    />
     <!--
       manifest.json provides metadata used when your web app is installed on a
       user's mobile device or desktop. See https://developers.google.com/web/fundamentals/web-app-manifest/
