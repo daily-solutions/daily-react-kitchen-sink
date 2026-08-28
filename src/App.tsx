@@ -20,6 +20,7 @@ import {
   useParticipantCounts,
   useParticipantIds,
   useRecording,
+  useRoom,
   useScreenShare,
   useTranscription,
 } from "@daily-co/daily-react";
@@ -457,9 +458,12 @@ export default function App() {
 
   const meetingState = useMeetingState();
 
+  const roomInfo = useRoom();
+
   return (
     <>
       <div className="App">
+        <p>Room Info: {JSON.stringify(roomInfo)}</p>
         <br />
         1. Join the call
         <br />
