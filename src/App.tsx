@@ -606,7 +606,6 @@ export default function App() {
         />
       ))}
       {participantIds.map((id) => (
-        // @ts-expect-error This works just fine but gives a typescript error
         <DailyVideo type="customTrack" key={id} automirror sessionId={id} />
       ))}
       {rmpParticipantIds.map((id) => (
