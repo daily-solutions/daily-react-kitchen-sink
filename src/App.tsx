@@ -321,6 +321,8 @@ export default function App() {
       .join({
         url: dailyRoomUrl,
         token: dailyMeetingToken,
+        startAudioOff: true,
+        startVideoOff: false,
       })
       .catch((err) => {
         console.error("Error joining room:", err);
