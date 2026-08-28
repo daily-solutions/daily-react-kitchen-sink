@@ -155,6 +155,7 @@ export default function App() {
       onTranscriptionError: logEvent,
       onTranscriptionStarted: logEvent,
       onTranscriptionStopped: logEvent,
+      onTranscriptionMessage: logEvent,
     });
 
   const network = useNetwork({
@@ -587,7 +588,15 @@ export default function App() {
             if (isTranscribing) {
               stopTranscription();
             } else {
-              startTranscription();
+              startTranscription({
+                language: "en-US",
+                endpointing: 500,
+                profanity_filter: false,
+                includeRawResponse: true,
+                extra: {
+                  keywords: ["Dara:5"],
+                },
+              });
             }
           }}
         >
