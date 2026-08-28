@@ -2,16 +2,12 @@ import "./styles.css";
 import { useCallback, useEffect, useRef } from "react";
 import {
   DailyProvider,
-  useAppMessage,
   useCallFrame,
   useDaily,
   useParticipantCounts,
   useParticipantIds,
 } from "@daily-co/daily-react";
-import {
-  DailyEventObject,
-  DailyEventObjectAppMessage,
-} from "@daily-co/daily-js";
+import { DailyEventObject } from "@daily-co/daily-js";
 
 const App = () => {
   const callObject = useDaily();
@@ -36,45 +32,7 @@ const App = () => {
     onParticipantUpdated: logEvent,
   });
 
-  type PrebuiltAppMessage = DailyEventObjectAppMessage<{
-    date: string;
-    event: "chat-msg"; // There's other events too
-    message: string;
-    name: string;
-    room: string;
-  }>;
-
-  const sendAppMessage = useAppMessage({
-    onAppMessage: useCallback((message: PrebuiltAppMessage) => {
-      console.log(message);
-      switch (message.data.event) {
-        case "chat-msg":
-          console.log("Chat message:", message.data.message);
-          break;
-        default:
-          console.log("Unknown event:", message.data.event);
-      }
-    }, []),
-  });
-
-  return (
-    <>
-      <button
-        onClick={() =>
-          sendAppMessage({
-            event: "chat-msg",
-            date: Date.now().toString(),
-            message: "Hello from button!",
-            name: "button",
-            room: "main-room",
-          })
-        }
-      >
-        Send message
-      </button>
-      <span>{participantCount.present} participants</span>
-    </>
-  );
+  return <span>{participantCount.present} participants</span>;
 };
 
 export const Prebuilt = () => {
@@ -87,6 +45,8 @@ export const Prebuilt = () => {
         useDevicePreferenceCookies: true,
       },
       url: "https://hush.daily.co/demo",
+      token:
+        "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJyIjoiZGVtbyIsIm8iOnRydWUsImFzdCI6dHJ1ZSwiZWxjIjp0cnVlLCJkIjoiNjgzYjg5ZjQtYjFmZC00Zjk0LWI4NDUtZWYyNjY2ZTNlMjEzIiwiaWF0IjoxNzcxODE4NDk2fQ.Ow2NL4lXVH5qbzgzbgBHaoMRqUlSBRzRtrCjnVI8SQA",
       iframeStyle: {
         width: "100%",
         height: "80vh",
