@@ -595,7 +595,10 @@ export default function App() {
         </button>
       </div>
       {participantIds.map((id) => (
-        <DailyVideo type="video" key={id} automirror sessionId={id} />
+        <div>
+          <p>{id}</p>
+          <DailyVideo type="video" key={id} automirror sessionId={id} />
+        </div>
       ))}
       {screens.map((screen) => (
         <DailyVideo
