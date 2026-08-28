@@ -173,6 +173,8 @@ export default function App() {
     onRecordingStopped: logEvent,
   });
 
+  const [isRecordingMuted, setIsRecordingMuted] = useState(false);
+
   useDailyEvent("load-attempt-failed", logEvent);
   useDailyEvent("joining-meeting", logEvent);
   useDailyEvent("joined-meeting", logEvent);
@@ -307,7 +309,48 @@ export default function App() {
     }
   }, [callObject, isRemoteMediaPlayerStarted, rmpParticipantIds]);
 
-  // Join the room with the generated token
+  const toggleRecordingMute = useCallback(() => {
+    if (!callObject || !isRecording) {
+      return;
+    }
+
+    // Example instance ID you'd need to generate your own uuid
+    const instanceId = "c3df927c-f738-4471-a2b7-066fa7e95a6b";
+
+    try {
+      if (isRecordingMuted) {
+        // Unmute: add all participants back to recording
+        callObject.updateRecording({
+          layout: {
+            preset: "default",
+            participants: {
+              video: ["*"], // Include all participants
+              audio: ["*"],
+            },
+          },
+        });
+        setIsRecordingMuted(false);
+        console.log("Recording unmuted - all participants added back");
+      } else {
+        // Mute: remove all participants from recording
+        callObject.updateRecording({
+          instanceId,
+          layout: {
+            preset: "default",
+            participants: {
+              video: [], // Remove all participants
+              audio: [],
+            },
+          },
+        });
+        setIsRecordingMuted(true);
+        console.log("Recording muted - all participants removed");
+      }
+    } catch (err) {
+      console.error("Error toggling recording mute:", err);
+    }
+  }, [callObject, isRecording, isRecordingMuted, setIsRecordingMuted]);
+
   const joinRoom = useCallback(() => {
     if (!callObject) {
       return;
@@ -580,6 +623,10 @@ export default function App() {
         </button>
         <button disabled={!isRecording} onClick={() => stopRecording()}>
           Stop Recording
+        </button>
+        <br />
+        <button disabled={!isRecording} onClick={toggleRecordingMute}>
+          {isRecordingMuted ? "Unmute Recording" : "Mute Recording"}
         </button>
         <br />
         <button
