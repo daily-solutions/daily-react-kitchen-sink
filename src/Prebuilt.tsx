@@ -1,16 +1,19 @@
 import "./styles.css";
-import { useCallback, useEffect, useRef } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
   DailyProvider,
   useAppMessage,
   useCallFrame,
   useDaily,
+  useInputSettings,
+  useMeetingState,
   useParticipantCounts,
   useParticipantIds,
 } from "@daily-co/daily-react";
 import {
   DailyEventObject,
   DailyEventObjectAppMessage,
+  DailyEventObjectInputSettingsUpdated,
 } from "@daily-co/daily-js";
 
 const App = () => {
@@ -18,6 +21,57 @@ const App = () => {
 
   // @ts-expect-error debugging
   window.callObject = callObject;
+
+  const meetingState = useMeetingState();
+  const [banubaDownloaded, setBanubaDownloaded] = useState(false);
+
+  const { updateInputSettings, inputSettings } = useInputSettings({
+    onError: useCallback(() => {
+      console.error("Error updating input settings");
+    }, []),
+
+    onInputSettingsUpdated: useCallback(
+      (event: DailyEventObjectInputSettingsUpdated) => {
+        console.log(
+          "Input settings updated:",
+          event.inputSettings?.video?.processor
+        );
+      },
+      []
+    ),
+  });
+
+  if (
+    inputSettings?.video?.processor?.type === "face-detection" &&
+    banubaDownloaded
+  ) {
+    updateInputSettings({
+      video: {
+        processor: {
+          type: "none",
+        },
+      },
+    })?.catch((err) => {
+      console.error("Error updating input settings", err);
+    });
+  }
+
+  if (meetingState === "joining-meeting" && !banubaDownloaded) {
+    updateInputSettings({
+      video: {
+        processor: {
+          type: "face-detection",
+        },
+      },
+    })
+      ?.then((res) => {
+        console.log("Updated input settings", res);
+        setBanubaDownloaded(true);
+      })
+      ?.catch((err) => {
+        console.error("Error updating input settings", err);
+      });
+  }
 
   const participantCount = useParticipantCounts();
 
@@ -72,7 +126,9 @@ const App = () => {
       >
         Send message
       </button>
-      <span>{participantCount.present} participants</span>
+      <p>{participantCount.present} participants</p>
+      <p>Meeting state: {meetingState}</p>
+      <p>Input settings: {JSON.stringify(inputSettings)}</p>
     </>
   );
 };
