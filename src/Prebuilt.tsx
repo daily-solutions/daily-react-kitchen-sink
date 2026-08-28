@@ -5,13 +5,18 @@ import {
   useAppMessage,
   useCallFrame,
   useDaily,
+  useDailyEvent,
+  useInputSettings,
   useParticipantCounts,
   useParticipantIds,
 } from "@daily-co/daily-react";
 import {
   DailyEventObject,
   DailyEventObjectAppMessage,
+  DailyEventObjectNonFatalError,
+  DailyEventObjectParticipants,
 } from "@daily-co/daily-js";
+import { Reconstruct } from "@daily-co/daily-react/dist/types/Reconstruct";
 
 const App = () => {
   const callObject = useDaily();
@@ -56,6 +61,40 @@ const App = () => {
       }
     }, []),
   });
+
+  const { updateInputSettings } = useInputSettings({
+    onError: useCallback(
+      (
+        err: Reconstruct<
+          DailyEventObjectNonFatalError,
+          "type",
+          "input-settings-error"
+        >
+      ) => {
+        console.error("Error updating input settings", err);
+      },
+      []
+    ),
+  });
+
+  useDailyEvent(
+    "joined-meeting",
+    useCallback(
+      (ev: DailyEventObjectParticipants) => {
+        console.log("Local participant joined", ev);
+        updateInputSettings({
+          audio: {
+            processor: {
+              type: "noise-cancellation",
+            },
+          },
+        })?.catch((err) => {
+          console.error("Error enabling Krisp", err);
+        });
+      },
+      [updateInputSettings]
+    )
+  );
 
   return (
     <>
