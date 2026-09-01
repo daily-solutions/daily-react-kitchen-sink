@@ -3,6 +3,13 @@
 This project console logs every event listener for Daily React. This is a great
 way to debug exactly what events are fired when trying to reproduce an issue.
 
+## Deployment
+
+Deployed on Vercel: https://daily-react-kitchen-sink.vercel.app
+
+Every branch push gets a preview deployment, and every PR gets a preview URL
+comment from the Vercel bot. Production tracks `main`.
+
 ## Available Scripts
 
 In the project directory, you can run:
