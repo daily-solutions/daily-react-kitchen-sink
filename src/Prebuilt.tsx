@@ -8,7 +8,7 @@ export const Prebuilt = () => {
     // @ts-expect-error will be fixed in the next release
     parentElRef: wrapperRef,
     options: {
-      url: "https://hush.daily.co/demo",
+      url: "https://hush.daily.co/music-mode",
       dailyConfig: {
         // Sends a 256kbps stereo mic track instead of the speech-optimized
         // browser defaults. SFU mode only.
