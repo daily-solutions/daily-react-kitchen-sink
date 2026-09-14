@@ -24,3 +24,6 @@ yarn-error.log*
 dist/
 .vercel
 .env*
+!.env.example
+whiteboard-evidence/
+webframe-dist/

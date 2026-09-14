@@ -12,6 +12,7 @@ import {
   DailyEventObject,
   DailyEventObjectAppMessage,
 } from "@daily-co/daily-js";
+import { WhiteboardPublisher } from "./WhiteboardPublisher";
 
 const App = () => {
   const callObject = useDaily();
@@ -73,6 +74,7 @@ const App = () => {
         Send message
       </button>
       <span>{participantCount.present} participants</span>
+      <WhiteboardPublisher prebuiltCallObject={callObject} />
     </>
   );
 };
