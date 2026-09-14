@@ -84,6 +84,10 @@ export const WhiteboardPublisher = ({
         allowMultipleCallInstances: true,
       });
       publisherRef.current = publisher;
+      // Exposed so the T-4009 experiment can toggle individual tracks from the
+      // console and isolate which one the recording compositor picks up.
+      (window as unknown as Record<string, unknown>).whiteboardPublisher =
+        publisher;
 
       publisher.on("joined-meeting", (e) =>
         console.log("[whiteboard] joined", e?.participants.local.session_id),
@@ -113,6 +117,28 @@ export const WhiteboardPublisher = ({
     } catch (err) {
       console.error("[whiteboard] failed", err);
       setStatus(`FAILED: ${String(err)}`);
+    }
+  }, []);
+
+  // Variant B: publish the SAME canvas from the SAME second instance, but as a
+  // screen share instead of a custom track. In call object mode the mediaStream
+  // option resolves (same window), so no picker opens. If this lands in the
+  // recording and the custom track does not, the compositor drops custom tracks
+  // specifically rather than dropping the second instance.
+  const publishAsScreenShare = useCallback(() => {
+    const publisher = publisherRef.current;
+    const canvas = canvasRef.current;
+    if (!publisher || !canvas) {
+      setStatus("publish the whiteboard first");
+      return;
+    }
+    try {
+      const stream = canvas.captureStream(30);
+      publisher.startScreenShare({ mediaStream: stream });
+      setStatus("also publishing the same canvas as a SCREEN SHARE");
+    } catch (err) {
+      console.error("[whiteboard] screenShare failed", err);
+      setStatus(`screenShare FAILED: ${String(err)}`);
     }
   }, []);
 
@@ -165,6 +191,9 @@ export const WhiteboardPublisher = ({
   return (
     <div style={{ marginTop: 16 }}>
       <button onClick={() => void publish()}>Publish whiteboard</button>
+      <button onClick={publishAsScreenShare}>
+        Variant B: same canvas as screenShare
+      </button>
       <button onClick={() => void stop()}>Stop whiteboard</button>
       <button onClick={() => void runNegativeControl()}>
         NEGATIVE CONTROL: startCustomTrack on Prebuilt
