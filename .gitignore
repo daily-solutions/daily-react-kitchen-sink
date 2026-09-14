@@ -26,3 +26,4 @@ dist/
 .env*
 !.env.example
 whiteboard-evidence/
+webframe-dist/

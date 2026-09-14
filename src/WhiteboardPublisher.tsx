@@ -23,7 +23,7 @@ const makeTickWorker = (fps: number) =>
  * not a stuck first frame, the timestamp lines up with the recording, and the
  * hue block makes a frozen frame obvious by eye before we even run OCR.
  */
-const startDrawing = (canvas: HTMLCanvasElement, label: string, fps: number) => {
+export const startDrawing = (canvas: HTMLCanvasElement, label: string, fps: number) => {
   const ctx = canvas.getContext("2d");
   if (!ctx) throw new Error("no 2d context");
 
