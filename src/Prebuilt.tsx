@@ -5,13 +5,36 @@ import {
   useAppMessage,
   useCallFrame,
   useDaily,
+  useDailyEvent,
+  useMeetingState,
   useParticipantCounts,
   useParticipantIds,
+  useRecording,
 } from "@daily-co/daily-react";
 import {
+  DailyCustomTrayButtons,
   DailyEventObject,
   DailyEventObjectAppMessage,
+  DailyEventObjectCustomButtonClick,
 } from "@daily-co/daily-js";
+
+// Custom Record button for the Prebuilt tray.
+// Prebuilt's built-in Record button always uses the default maxDuration (3 hours).
+// Hide it with the meeting token property `enable_recording_ui: false`, then add
+// this button so we can call startRecording() with our own maxDuration.
+const RECORD_BUTTON_ID = "customRecord";
+const RECORDING_MAX_DURATION_SECONDS = 6 * 60 * 60; // 21600 (6 hours)
+
+const recordTrayButton = (isRecording: boolean): DailyCustomTrayButtons => ({
+  [RECORD_BUTTON_ID]: {
+    iconPath: "https://unpkg.com/lucide-static@0.544.0/icons/circle-dot.svg",
+    label: isRecording ? "Stop recording" : "Record (6h)",
+    tooltip: isRecording
+      ? "Stop the cloud recording"
+      : "Start a 6 hour cloud recording",
+    visualState: isRecording ? "active" : "default",
+  },
+});
 
 const App = () => {
   const callObject = useDaily();
@@ -35,6 +58,36 @@ const App = () => {
     onParticipantLeft: logEvent,
     onParticipantUpdated: logEvent,
   });
+
+  const { isRecording, startRecording, stopRecording } = useRecording({
+    onRecordingStarted: logEvent,
+    onRecordingStopped: logEvent,
+    onRecordingError: logEvent,
+  });
+
+  useDailyEvent(
+    "custom-button-click",
+    useCallback(
+      (ev: DailyEventObjectCustomButtonClick) => {
+        logEvent(ev);
+        if (ev.button_id !== RECORD_BUTTON_ID) return;
+        if (isRecording) {
+          stopRecording();
+        } else {
+          startRecording({ maxDuration: RECORDING_MAX_DURATION_SECONDS });
+        }
+      },
+      [isRecording, logEvent, startRecording, stopRecording]
+    )
+  );
+
+  // Keep the tray button's label and visualState in sync with recording state.
+  // Only update once joined; before that the Prebuilt iframe is not ready.
+  const meetingState = useMeetingState();
+  useEffect(() => {
+    if (!callObject || meetingState !== "joined-meeting") return;
+    callObject.updateCustomTrayButtons(recordTrayButton(isRecording));
+  }, [callObject, isRecording, meetingState]);
 
   type PrebuiltAppMessage = DailyEventObjectAppMessage<{
     date: string;
@@ -79,6 +132,10 @@ const App = () => {
 
 export const Prebuilt = () => {
   const wrapperRef = useRef<HTMLDivElement>(null);
+  // Join with ?token=... so a server-made meeting token (with
+  // enable_recording: "cloud" and enable_recording_ui: false) is used.
+  const token =
+    new URLSearchParams(window.location.search).get("token") ?? undefined;
   const callFrame = useCallFrame({
     // @ts-expect-error will be fixed in the next release
     parentElRef: wrapperRef,
@@ -87,6 +144,9 @@ export const Prebuilt = () => {
         useDevicePreferenceCookies: true,
       },
       url: "https://hush.daily.co/demo",
+      // daily-js rejects `token: undefined`, so only pass it when present
+      ...(token ? { token } : {}),
+      customTrayButtons: recordTrayButton(false),
       iframeStyle: {
         width: "100%",
         height: "80vh",
