@@ -363,6 +363,7 @@ export const Prebuilt = () => {
   // Ask our serverless route for a meeting token before creating the
   // frame. useCallFrame waits until shouldCreateInstance() returns true.
   const [meetingToken, setMeetingToken] = useState<string | null>(null);
+  const [tokenError, setTokenError] = useState<string | null>(null);
   useEffect(() => {
     // React StrictMode runs effects twice in dev. The cancelled flag drops
     // the first fetch so only one token ever reaches the frame.
@@ -377,7 +378,12 @@ export const Prebuilt = () => {
         if (!data.token) throw new Error(data.error ?? "No token in response");
         if (!cancelled) setMeetingToken(data.token);
       })
-      .catch((err) => console.error("Error fetching meeting token", err));
+      .catch((err: unknown) => {
+        console.error("Error fetching meeting token", err);
+        if (!cancelled) {
+          setTokenError(err instanceof Error ? err.message : String(err));
+        }
+      });
     return () => {
       cancelled = true;
     };
@@ -419,6 +425,11 @@ export const Prebuilt = () => {
       <div ref={wrapperRef} />
       {meetingToken ? (
         <App meetingToken={meetingToken} />
+      ) : tokenError ? (
+        <span>
+          Could not get a meeting token: {tokenError}. Is DAILY_API_KEY set,
+          and is the app running under vercel dev?
+        </span>
       ) : (
         <span>Fetching meeting token...</span>
       )}
