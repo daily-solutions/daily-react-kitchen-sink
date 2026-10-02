@@ -10,6 +10,17 @@ Deployed on Vercel: https://daily-react-kitchen-sink.vercel.app
 Every branch push gets a preview deployment, and every PR gets a preview URL
 comment from the Vercel bot. Production tracks `main`.
 
+### Serverless API routes
+
+The `api/` folder holds Vercel serverless functions. They keep the Daily API
+key off the client: `api/token.ts` mints meeting tokens and `api/eject.ts`
+removes and bans a participant.
+
+Set `DAILY_API_KEY` (no `VITE_` prefix, so Vite never bundles it) in the
+Vercel project settings, and in `.env.local` for local runs. The plain Vite
+dev server does not serve `api/`, so run the app with `npx vercel dev` when
+you need those routes.
+
 ## Available Scripts
 
 In the project directory, you can run:
