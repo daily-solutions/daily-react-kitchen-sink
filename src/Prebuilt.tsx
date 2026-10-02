@@ -15,25 +15,16 @@ import {
   DailyEventObjectCustomButtonClick,
 } from "@daily-co/daily-js";
 
-// The Prebuilt room this demo joins. The room name is the last path segment.
+// The Prebuilt room this demo joins. Must match ROOM_NAME in api/_daily.ts.
 const ROOM_URL = "https://hush.daily.co/demo";
-const ROOM_NAME = "demo";
 
-// DEMO ONLY: VITE_ prefixed env vars are bundled into the browser, so this
-// API key is visible to anyone who opens dev tools. A production app must
-// proxy the eject call through its own backend. The API key must never
-// reach the browser. Never log this value.
-const DAILY_API_KEY = import.meta.env.VITE_DAILY_API_KEY as string;
-
-// Owner token for the moderator, guest token for a second participant.
-// Both carry a user_id, which the ban needs. Join with ?prebuilt=true for
-// the moderator, or ?prebuilt=true&guest=true for a bannable guest.
+// The Daily API key never reaches the browser. Two Vercel serverless
+// routes in /api hold it: /api/token mints a meeting token for this
+// client, and /api/eject does the remove-and-ban. Join with
+// ?prebuilt=true for the moderator (owner token), or
+// ?prebuilt=true&guest=true for a bannable guest.
 const isGuest = new URLSearchParams(window.location.search).has("guest");
-const MEETING_TOKEN = (
-  isGuest
-    ? import.meta.env.VITE_DAILY_GUEST_TOKEN
-    : import.meta.env.VITE_DAILY_MODERATOR_TOKEN
-) as string;
+const TOKEN_ROLE = isGuest ? "guest" : "moderator";
 
 const MODERATION_ICON_URL =
   "https://cdn.jsdelivr.net/npm/lucide-static@0.462.0/icons/shield-ban.svg";
@@ -138,8 +129,8 @@ const buildPanelHtml = (
 
 // Everything the moderator panel needs: keeps the sidebar integration in
 // sync with the participant list, opens it from the custom tray button,
-// and turns a panel click into the REST eject call with ban: true.
-const ModerationPanel = () => {
+// and turns a panel click into a call to our /api/eject route.
+const ModerationPanel = ({ meetingToken }: { meetingToken: string }) => {
   const callObject = useDaily();
   const participantIds = useParticipantIds();
   const [status, setStatus] = useState(
@@ -221,23 +212,21 @@ const ModerationPanel = () => {
   const banParticipant = useCallback(
     async (userId: string, userName: string) => {
       setStatus(`Removing and banning ${userName}...`);
-      const url = `https://api.daily.co/v1/rooms/${ROOM_NAME}/eject`;
-      // Ban works by user_ids only. Passing session ids ejects without
-      // banning, which is not what this demo shows.
-      const body = { user_ids: [userId], ban: true };
+      const url = "/api/eject";
+      const body = { userId };
       logEvent({ action: "moderation-eject-request", url, body });
       try {
         const response = await fetch(url, {
           method: "POST",
           headers: {
-            // DEMO ONLY: see the warning at DAILY_API_KEY above. Move this
-            // call to a backend before shipping anything real.
-            Authorization: `Bearer ${DAILY_API_KEY}`,
+            // Our own meeting token. The route validates it with Daily and
+            // only bans if it is an owner token for this room.
+            Authorization: `Bearer ${meetingToken}`,
             "Content-Type": "application/json",
           },
           body: JSON.stringify(body),
         });
-        const result: unknown = await response.json();
+        const result: unknown = await response.json().catch(() => null);
         logEvent({
           action: "moderation-eject-response",
           status: response.status,
@@ -253,7 +242,7 @@ const ModerationPanel = () => {
         setStatus("Eject request failed. See console.");
       }
     },
-    [logEvent]
+    [logEvent, meetingToken]
   );
 
   // The panel posts to window.top, which is this window.
@@ -279,7 +268,7 @@ const ModerationPanel = () => {
   return <span> Moderation: {status}</span>;
 };
 
-const App = () => {
+const App = ({ meetingToken }: { meetingToken: string }) => {
   const callObject = useDaily();
 
   // @ts-expect-error debugging
@@ -339,13 +328,37 @@ const App = () => {
         Send message
       </button>
       <span>{participantCount.present} participants</span>
-      <ModerationPanel />
+      <ModerationPanel meetingToken={meetingToken} />
     </>
   );
 };
 
 export const Prebuilt = () => {
   const wrapperRef = useRef<HTMLDivElement>(null);
+
+  // Ask our serverless route for a meeting token before creating the
+  // frame. useCallFrame waits until shouldCreateInstance() returns true.
+  const [meetingToken, setMeetingToken] = useState<string | null>(null);
+  useEffect(() => {
+    // React StrictMode runs effects twice in dev. The cancelled flag drops
+    // the first fetch so only one token ever reaches the frame.
+    let cancelled = false;
+    fetch("/api/token", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ role: TOKEN_ROLE }),
+    })
+      .then((res) => res.json())
+      .then((data: { token?: string; error?: string }) => {
+        if (!data.token) throw new Error(data.error ?? "No token in response");
+        if (!cancelled) setMeetingToken(data.token);
+      })
+      .catch((err) => console.error("Error fetching meeting token", err));
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
   const callFrame = useCallFrame({
     // @ts-expect-error will be fixed in the next release
     parentElRef: wrapperRef,
@@ -354,7 +367,7 @@ export const Prebuilt = () => {
         useDevicePreferenceCookies: true,
       },
       url: ROOM_URL,
-      token: MEETING_TOKEN,
+      token: meetingToken ?? undefined,
       customIntegrations: {
         moderation: {
           label: "Moderation",
@@ -374,7 +387,10 @@ export const Prebuilt = () => {
         avatar: "https://www.svgrepo.com/show/532036/cloud-rain-alt.svg",
       },
     },
-    shouldCreateInstance: useCallback(() => Boolean(wrapperRef.current), []),
+    shouldCreateInstance: useCallback(
+      () => Boolean(wrapperRef.current) && Boolean(meetingToken),
+      [meetingToken]
+    ),
   });
 
   useEffect(() => {
@@ -386,7 +402,11 @@ export const Prebuilt = () => {
   return (
     <DailyProvider callObject={callFrame}>
       <div ref={wrapperRef} />
-      <App />
+      {meetingToken ? (
+        <App meetingToken={meetingToken} />
+      ) : (
+        <span>Fetching meeting token...</span>
+      )}
     </DailyProvider>
   );
 };
