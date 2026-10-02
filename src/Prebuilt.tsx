@@ -6,8 +6,11 @@ import {
   useCallFrame,
   useDaily,
   useDailyEvent,
+  useLocalSessionId,
+  useMeetingState,
   useParticipantCounts,
   useParticipantIds,
+  useParticipantProperty,
 } from "@daily-co/daily-react";
 import {
   DailyEventObject,
@@ -68,9 +71,13 @@ const escapeHtml = (value: string): string =>
 // app listens for "message" events on window. Daily documents no
 // parent-to-integration message bridge, so updates flow the other way:
 // we re-call setCustomIntegrations() with fresh HTML.
+//
+// The nonce is a random value only this panel knows. The app ignores any
+// ban message without it, so a stray script on the page cannot forge one.
 const buildPanelHtml = (
   participants: PanelParticipant[],
-  status: string
+  status: string,
+  nonce: string
 ): string => {
   const rows = participants
     .map((p) => {
@@ -114,6 +121,7 @@ const buildPanelHtml = (
       window.top.postMessage(
         {
           type: "moderation-ban",
+          nonce: "${nonce}",
           userId: this.dataset.userId,
           sessionId: this.dataset.sessionId,
           userName: this.dataset.userName,
@@ -130,9 +138,18 @@ const buildPanelHtml = (
 // Everything the moderator panel needs: keeps the sidebar integration in
 // sync with the participant list, opens it from the custom tray button,
 // and turns a panel click into a call to our /api/eject route.
+//
+// Only owners get any of it. The tray button and the sidebar integration
+// are registered after join, once we know the local participant is an
+// owner. Prebuilt's controlledBy: "owners" only governs who can open the
+// integration, so without this check guests would still see the button.
 const ModerationPanel = ({ meetingToken }: { meetingToken: string }) => {
   const callObject = useDaily();
+  const meetingState = useMeetingState();
+  const localSessionId = useLocalSessionId();
+  const isOwner = useParticipantProperty(localSessionId, "owner");
   const participantIds = useParticipantIds();
+  const nonceRef = useRef(crypto.randomUUID());
   const [status, setStatus] = useState(
     "Click a button to remove and ban that participant."
   );
@@ -171,10 +188,11 @@ const ModerationPanel = ({ meetingToken }: { meetingToken: string }) => {
     )
   );
 
-  // Re-publish the panel whenever the participant list or the status line
-  // changes, so the sidebar content stays current.
+  // Publish the panel once we are joined as an owner, then re-publish it
+  // whenever the participant list or the status line changes, so the
+  // sidebar content stays current.
   useEffect(() => {
-    if (!callObject || callObject.meetingState() !== "joined-meeting") return;
+    if (!callObject || !isOwner || meetingState !== "joined-meeting") return;
     const participants = Object.values(callObject.participants()).map(
       (p): PanelParticipant => ({
         sessionId: p.session_id,
@@ -194,20 +212,20 @@ const ModerationPanel = ({ meetingToken }: { meetingToken: string }) => {
           label: "Moderation",
           location: "sidebar",
           controlledBy: "owners",
-          srcdoc: buildPanelHtml(participants, status),
+          srcdoc: buildPanelHtml(participants, status, nonceRef.current),
           sandbox: "allow-scripts",
           loading: "lazy",
         },
       });
       // Re-assert the tray button too. Re-publishing the integration
-      // deactivates the button that was registered at frame creation
-      // (clicks stop firing custom-button-click; verified in Chrome with
-      // daily-js 0.92.2), and this brings it back.
+      // deactivates a previously registered button (clicks stop firing
+      // custom-button-click; verified in Chrome with daily-js 0.92.2),
+      // and this brings it back.
       callObject.updateCustomTrayButtons(MODERATION_TRAY_BUTTONS);
     } catch (err) {
       console.error("Error updating moderation integration", err);
     }
-  }, [callObject, participantIds, status]);
+  }, [callObject, isOwner, meetingState, participantIds, status]);
 
   const banParticipant = useCallback(
     async (userId: string, userName: string) => {
@@ -245,17 +263,22 @@ const ModerationPanel = ({ meetingToken }: { meetingToken: string }) => {
     [logEvent, meetingToken]
   );
 
-  // The panel posts to window.top, which is this window.
+  // The panel posts to window.top, which is this window. Only owners
+  // listen, and only messages carrying this panel's nonce are acted on.
+  // The /api/eject route checks ownership again on the server.
   useEffect(() => {
+    if (!isOwner) return;
     const onMessage = (e: MessageEvent) => {
       const data: unknown = e.data;
       if (typeof data !== "object" || data === null) return;
       const msg = data as {
         type?: string;
+        nonce?: string;
         userId?: string;
         userName?: string;
       };
       if (msg.type !== "moderation-ban") return;
+      if (msg.nonce !== nonceRef.current) return;
       if (!msg.userId) return;
       banParticipant(msg.userId, msg.userName ?? "participant").catch((err) =>
         console.error("Error handling ban request", err)
@@ -263,8 +286,9 @@ const ModerationPanel = ({ meetingToken }: { meetingToken: string }) => {
     };
     window.addEventListener("message", onMessage);
     return () => window.removeEventListener("message", onMessage);
-  }, [banParticipant]);
+  }, [banParticipant, isOwner]);
 
+  if (!isOwner) return null;
   return <span> Moderation: {status}</span>;
 };
 
@@ -368,17 +392,8 @@ export const Prebuilt = () => {
       },
       url: ROOM_URL,
       token: meetingToken ?? undefined,
-      customIntegrations: {
-        moderation: {
-          label: "Moderation",
-          location: "sidebar",
-          controlledBy: "owners",
-          srcdoc: buildPanelHtml([], "Waiting to join the meeting..."),
-          sandbox: "allow-scripts",
-          loading: "lazy",
-        },
-      },
-      customTrayButtons: MODERATION_TRAY_BUTTONS,
+      // No customIntegrations or customTrayButtons here: ModerationPanel
+      // registers both after join, and only for owners.
       iframeStyle: {
         width: "100%",
         height: "80vh",

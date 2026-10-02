@@ -7,6 +7,10 @@ import { ROOM_NAME, dailyApi, json } from "./_daily";
 // owners-only sidebar integration. Both roles get a user_id, because the
 // eject endpoint bans by user_id. The guest id is random so a banned
 // guest can reload and try again with a fresh identity.
+//
+// DEMO ONLY: anyone can ask for the moderator role here. A real app must
+// check its own login session before handing out an owner token, since
+// everything downstream (the panel, /api/eject) trusts is_owner.
 export async function POST(request: Request): Promise<Response> {
   const body = (await request.json().catch(() => ({}))) as { role?: string };
   const isModerator = body.role === "moderator";
