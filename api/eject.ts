@@ -1,4 +1,4 @@
-import { ROOM_NAME, dailyApi, json } from "./_daily";
+import { ROOM_NAME, dailyApi, json } from "./_daily.js";
 
 // POST /api/eject  { userId }  with  Authorization: Bearer <meeting token>
 //
