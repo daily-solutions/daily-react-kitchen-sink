@@ -29,6 +29,22 @@ const ROOM_URL = "https://hush.daily.co/demo";
 const isGuest = new URLSearchParams(window.location.search).has("guest");
 const TOKEN_ROLE = isGuest ? "guest" : "moderator";
 
+// Daily bans by the token's user_id, so the guest needs the same id on
+// every load for a ban to hold. We keep one in localStorage. A real app
+// would use its own account id here instead.
+const GUEST_ID_KEY = "moderation-demo-guest-id";
+const getGuestId = (): string => {
+  try {
+    const saved = window.localStorage.getItem(GUEST_ID_KEY);
+    if (saved) return saved;
+    const fresh = `guest-${crypto.randomUUID().slice(0, 8)}`;
+    window.localStorage.setItem(GUEST_ID_KEY, fresh);
+    return fresh;
+  } catch {
+    return `guest-${crypto.randomUUID().slice(0, 8)}`;
+  }
+};
+
 const MODERATION_ICON_URL =
   "https://cdn.jsdelivr.net/npm/lucide-static@0.462.0/icons/shield-ban.svg";
 
@@ -371,7 +387,10 @@ export const Prebuilt = () => {
     fetch("/api/token", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ role: TOKEN_ROLE }),
+      body: JSON.stringify({
+        role: TOKEN_ROLE,
+        userId: isGuest ? getGuestId() : undefined,
+      }),
     })
       .then((res) => res.json())
       .then((data: { token?: string; error?: string }) => {
