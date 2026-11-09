@@ -72,6 +72,10 @@ export default function App() {
   const [enableBackgroundClicked, setEnableBackgroundClicked] = useState(false);
   const [dailyRoomUrl, setDailyRoomUrl] = useState("");
   const [dailyMeetingToken, setDailyMeetingToken] = useState("");
+  const [sipUri, setSipUri] = useState(
+    "sip:d3v-zach-zendesk.sip.twilio.com?X-Zendesk-Ticket-Id=1274"
+  );
+  const [dialOutSessionId, setDialOutSessionId] = useState<string | null>(null);
 
   const {
     cameraError,
@@ -186,6 +190,11 @@ export default function App() {
   useDailyEvent("left-meeting", logEvent);
 
   useDailyEvent("error", logEvent);
+
+  useDailyEvent("dialout-connected", logEvent);
+  useDailyEvent("dialout-error", logEvent);
+  useDailyEvent("dialout-stopped", logEvent);
+  useDailyEvent("dialout-warning", logEvent);
 
   const { meetingError, nonFatalError } = useDailyError();
   if (meetingError) {
@@ -306,6 +315,57 @@ export default function App() {
         });
     }
   }, [callObject, isRemoteMediaPlayerStarted, rmpParticipantIds]);
+
+  // Start dial-out to SIP URI
+  const startDialOut = useCallback(() => {
+    if (!callObject) {
+      return;
+    }
+
+    if (!sipUri) {
+      alert("Please enter a SIP URI (e.g. sip:user@example.com)");
+      return;
+    }
+
+    callObject
+      .startDialOut({
+        sipUri: sipUri,
+        displayName: "SIP User",
+        video: true,
+      })
+      .then((result) => {
+        console.log("Dial-out started successfully:", result);
+        // Track the session ID if available in the result
+        if (typeof result === "object" && result?.session?.sessionId) {
+          setDialOutSessionId(result.session.sessionId);
+        }
+      })
+      .catch((err) => {
+        console.error("Error starting dial-out:", err);
+      });
+  }, [callObject, sipUri]);
+
+  // Stop dial-out
+  const stopDialOut = useCallback(() => {
+    if (!callObject) {
+      return;
+    }
+
+    if (!dialOutSessionId) {
+      console.log("No active dial-out session to stop.");
+      return;
+    }
+
+    callObject
+      .stopDialOut({ sessionId: dialOutSessionId })
+      .then(() => {
+        console.log("Dial-out stopped successfully.");
+        setDialOutSessionId(null); // Reset the session ID
+      })
+      .catch((err) => {
+        console.error("Error stopping dial-out:", err);
+      });
+  }, [callObject, dialOutSessionId]);
 
   // Join the room with the generated token
   const joinRoom = useCallback(() => {
@@ -500,6 +560,24 @@ export default function App() {
         <button onClick={leaveRoom}>Leave call</button>
         <br />
         <button onClick={toggleRemoteMedia}>Toggle Remote Media Player</button>
+        <br />
+        3. Dial-out to SIP URI <br />
+        <input
+          type="text"
+          value={sipUri}
+          placeholder="sip:user@example.com"
+          onChange={(event) => {
+            setSipUri(event.target.value);
+          }}
+        />
+        <br />
+        <button disabled={!sipUri.length} onClick={startDialOut}>
+          Start Dial-out
+        </button>
+        <br />
+        <button disabled={!dialOutSessionId} onClick={stopDialOut}>
+          Stop Dial-out
+        </button>
         <hr />
         <br />
         2. Select your device <br />
