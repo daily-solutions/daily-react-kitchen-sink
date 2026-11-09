@@ -566,7 +566,15 @@ export default function App() {
             if (isSharingScreen) {
               stopScreenShare();
             } else {
-              startScreenShare();
+              startScreenShare({
+                displayMediaOptions: {
+                  video: true,
+                  audio: true,
+                  selfBrowserSurface: "exclude",
+                  surfaceSwitching: "include",
+                  systemAudio: "include",
+                },
+              });
             }
           }}
         >
