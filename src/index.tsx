@@ -23,7 +23,22 @@ root.render(
     ) : (
       <DailyProvider
         subscribeToTracksAutomatically={false}
-        dailyConfig={{ useDevicePreferenceCookies: true }}
+        dailyConfig={{
+          useDevicePreferenceCookies: true,
+          iceConfig: {
+            iceServers: [
+              {
+                urls: [
+                  "stun:stun.l.google.com:19302",
+                  "stun:stun1.l.google.com:19302",
+                  "stun:stun.cloudflare.com:3478",
+                ],
+              },
+            ],
+            placement: "replace",
+            iceTransportPolicy: "all",
+          },
+        }}
       >
         <App />
       </DailyProvider>

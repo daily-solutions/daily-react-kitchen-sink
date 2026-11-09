@@ -85,6 +85,19 @@ export const Prebuilt = () => {
     options: {
       dailyConfig: {
         useDevicePreferenceCookies: true,
+        iceConfig: {
+          iceServers: [
+            {
+              urls: [
+                "stun:stun.l.google.com:19302",
+                "stun:stun1.l.google.com:19302",
+                "stun:stun.cloudflare.com:3478",
+              ],
+            },
+          ],
+          placement: "replace",
+          iceTransportPolicy: "all",
+        },
       },
       url: "https://hush.daily.co/demo",
       iframeStyle: {
