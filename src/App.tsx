@@ -42,7 +42,7 @@ const MicVolumeVisualizer = () => {
       // this volume number will be between 0 and 1
       // give it a minimum scale of 0.15 to not completely disappear 👻
       volRef.current.style.transform = `scale(${Math.max(0.15, volume)})`;
-    }, [])
+    }, []),
   );
 
   // Your audio track's audio volume visualized in a small circle,
@@ -122,6 +122,19 @@ export default function App() {
       },
     });
 
+  const { startRecording, stopRecording, isRecording } = useRecording({
+    onRecordingData: logEvent,
+    onRecordingError: logEvent,
+    onRecordingStarted: logEvent,
+    onRecordingStopped: logEvent,
+  });
+
+  const { hidden, present } = useParticipantCounts({
+    onParticipantCountsUpdated: logEvent,
+  });
+
+  const participantCounts = hidden + present;
+
   const participantIds = useParticipantIds({
     onParticipantJoined: useCallback(
       (ev: DailyEventObjectParticipant) => {
@@ -141,8 +154,14 @@ export default function App() {
             rmpVideo: true,
           },
         });
+
+        const counts = callObject.participantCounts();
+        if (counts.present + counts.hidden >= 2 && !isRecording) {
+          console.log("Auto-starting recording: 2nd participant joined");
+          startRecording();
+        }
       },
-      [callObject, logEvent]
+      [callObject, isRecording, logEvent, startRecording],
     ),
     onParticipantLeft: logEvent,
     onParticipantUpdated: logEvent,
@@ -164,13 +183,6 @@ export default function App() {
 
   const cpuLoad = useCPULoad({
     onCPULoadChange: logEvent,
-  });
-
-  const { startRecording, stopRecording, isRecording } = useRecording({
-    onRecordingData: logEvent,
-    onRecordingError: logEvent,
-    onRecordingStarted: logEvent,
-    onRecordingStopped: logEvent,
   });
 
   useDailyEvent("load-attempt-failed", logEvent);
@@ -270,8 +282,8 @@ export default function App() {
         logEvent(ev);
         setIsRemoteMediaPlayerStarted(true);
       },
-      [logEvent, setIsRemoteMediaPlayerStarted]
-    )
+      [logEvent, setIsRemoteMediaPlayerStarted],
+    ),
   );
   useDailyEvent(
     "remote-media-player-started",
@@ -281,8 +293,8 @@ export default function App() {
         logEvent(ev);
         setIsRemoteMediaPlayerStarted(true);
       },
-      [logEvent, setIsRemoteMediaPlayerStarted]
-    )
+      [logEvent, setIsRemoteMediaPlayerStarted],
+    ),
   );
   useDailyEvent("remote-media-player-updated", logEvent);
 
@@ -412,7 +424,7 @@ export default function App() {
         console.error("Error setting camera", err);
       });
     },
-    [setCamera]
+    [setCamera],
   );
 
   // change mic device
@@ -422,7 +434,7 @@ export default function App() {
         console.error("Error setting microphone", err);
       });
     },
-    [setMicrophone]
+    [setMicrophone],
   );
 
   // change speaker device
@@ -432,7 +444,7 @@ export default function App() {
         console.error("Error setting speaker", err);
       });
     },
-    [setSpeaker]
+    [setSpeaker],
   );
 
   const stopCamera = useCallback(() => {
@@ -448,12 +460,6 @@ export default function App() {
     }
     callObject.setLocalVideo(true);
   }, [callObject]);
-
-  const { hidden, present } = useParticipantCounts({
-    onParticipantCountsUpdated: logEvent,
-  });
-
-  const participantCounts = hidden + present;
 
   const meetingState = useMeetingState();
 
