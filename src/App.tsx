@@ -582,6 +582,20 @@ export default function App() {
           Stop Recording
         </button>
         <br />
+        {/*
+          Raw-tracks recording: one file per participant track. Pair this with a room
+          created by scripts/create-raw-tracks-room.ts, which also sets
+          enable_raw_tracks_transcoded_audio (gapless WAV) and enable_raw_tracks_event_json
+          (per-file start offsets). After the call, line the tracks up with
+          raw-tracks-align/align.ts. Stop it with the Stop Recording button above.
+        */}
+        <button
+          disabled={isRecording}
+          onClick={() => startRecording({ type: "raw-tracks" })}
+        >
+          Start Raw-Tracks Recording
+        </button>
+        <br />
         <button
           onClick={() => {
             if (isTranscribing) {

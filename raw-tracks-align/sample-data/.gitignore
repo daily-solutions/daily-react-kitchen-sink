@@ -1,0 +1,5 @@
+# Keep the folder tracked, but never commit downloaded recordings, event JSON,
+# pull scripts, or aligned output (real session data + large media).
+*
+!.gitkeep
+!.gitignore
