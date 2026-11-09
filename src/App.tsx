@@ -111,6 +111,23 @@ export default function App() {
   const noiseCancellationEnabled =
     inputSettings?.audio?.processor?.type === "noise-cancellation";
 
+  const noiseSuppression = (
+    inputSettings?.audio?.settings as MediaTrackConstraints
+  )?.noiseSuppression;
+
+  // noiseSuppression can be boolean, { exact: boolean }, { ideal: boolean }, or undefined
+  let browserNoiseSuppressionEnabled = false;
+  if (typeof noiseSuppression === "boolean") {
+    browserNoiseSuppressionEnabled = noiseSuppression;
+  } else if (
+    typeof noiseSuppression === "object" &&
+    noiseSuppression !== null
+  ) {
+    const constraint = noiseSuppression;
+    browserNoiseSuppressionEnabled =
+      constraint.exact ?? constraint.ideal ?? false;
+  }
+
   const { startScreenShare, stopScreenShare, screens, isSharingScreen } =
     useScreenShare({
       onError: logEvent,
@@ -253,6 +270,32 @@ export default function App() {
       console.error("Error enabling Krisp", err);
     });
   }, [callObject, noiseCancellationEnabled, updateInputSettings]);
+
+  const toggleBrowserNoiseSuppression = useCallback(() => {
+    if (!callObject) {
+      return;
+    }
+
+    updateInputSettings({
+      audio: {
+        settings: {
+          autoGainControl: false,
+          echoCancellation: false,
+          noiseSuppression: { exact: !browserNoiseSuppressionEnabled },
+        },
+      },
+    })
+      ?.then((r) => {
+        console.log("Updated input settings: ", r);
+      })
+      .catch((err) => {
+        console.error("Error updating audio settings: ", err);
+
+        if (err instanceof OverconstrainedError) {
+          console.error("OverconstrainedError: ", err.constraint);
+        }
+      });
+  }, [callObject, browserNoiseSuppressionEnabled, updateInputSettings]);
 
   const rmpParticipantIds = useParticipantIds({
     sort: "joined_at",
@@ -558,6 +601,11 @@ export default function App() {
           onClick={() => toggleKrisp()}
         >
           Toggle Krisp
+        </button>
+        <br />
+        <button onClick={toggleBrowserNoiseSuppression}>
+          Toggle Browser Noise Suppression (
+          {browserNoiseSuppressionEnabled ? "ON" : "OFF"})
         </button>
         <br />
         <button
