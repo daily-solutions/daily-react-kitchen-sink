@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef } from "react";
+import { useEffect, useRef } from "react";
 import { useCallFrame } from "@daily-co/daily-react";
 
 // The Daily domain that actually owns the rooms. Set VITE_DAILY_DOMAIN in
@@ -39,7 +39,6 @@ export const BrandedPrebuilt = ({ roomName }: { roomName: string }) => {
         border: "0",
       },
     },
-    shouldCreateInstance: useCallback(() => Boolean(wrapperRef.current), []),
   });
 
   useEffect(() => {
