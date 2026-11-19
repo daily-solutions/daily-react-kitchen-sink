@@ -10,6 +10,23 @@ Deployed on Vercel: https://daily-react-kitchen-sink.vercel.app
 Every branch push gets a preview deployment, and every PR gets a preview URL
 comment from the Vercel bot. Production tracks `main`.
 
+## Branded URL demo: Daily Prebuilt on your own domain
+
+Want links like `https://video.example.com/my-room` instead of
+`https://your-domain.daily.co/my-room`? Host this app on your domain. Any path
+is treated as a room name and opens that Daily room in a full-page Prebuilt
+iframe (see `src/BrandedPrebuilt.tsx`). Nothing about Prebuilt changes.
+
+1. Set `VITE_DAILY_DOMAIN=your-domain` in `.env.local`. If it is unset or blank, it defaults to `hush`.
+2. `npm run dev`, then open `http://localhost:3000/<room-name>`.
+3. Private room? Add the meeting token: `/<room-name>?t=<token>`.
+
+When you deploy, your host must serve `index.html` for every path (SPA
+fallback). On Vercel, `vercel.json` in this repo already does that.
+
+Note: the browser shows your domain, but the call still runs on
+`your-domain.daily.co`. Daily's logs and dashboard will show the Daily room URL.
+
 ## Available Scripts
 
 In the project directory, you can run:
