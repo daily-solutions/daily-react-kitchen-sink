@@ -1,4 +1,4 @@
-import { useEffect, useRef } from "react";
+import { type MutableRefObject, useEffect, useRef } from "react";
 import { useCallFrame } from "@daily-co/daily-react";
 
 // The Daily domain that actually owns the rooms. Set VITE_DAILY_DOMAIN in
@@ -25,8 +25,7 @@ export const BrandedPrebuilt = ({ roomName }: { roomName: string }) => {
   )}`;
 
   const callFrame = useCallFrame({
-    // @ts-expect-error will be fixed in the next release
-    parentElRef: wrapperRef,
+    parentElRef: wrapperRef as MutableRefObject<HTMLElement>,
     options: {
       url: dailyRoomUrl,
       ...(token ? { token } : {}),
