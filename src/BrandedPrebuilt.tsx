@@ -3,7 +3,10 @@ import { useCallFrame } from "@daily-co/daily-react";
 
 // The Daily domain that actually owns the rooms. Set VITE_DAILY_DOMAIN in
 // .env.local to point at your own domain (e.g. "acme" for acme.daily.co).
-const DAILY_DOMAIN = (import.meta.env.VITE_DAILY_DOMAIN as string) || "hush";
+// Falls back to "hush" when the variable is unset or blank.
+const DAILY_DOMAIN =
+  ((import.meta.env.VITE_DAILY_DOMAIN as string | undefined) ?? "").trim() ||
+  "hush";
 
 /**
  * Serves Daily Prebuilt from your own (sub)domain.

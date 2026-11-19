@@ -17,7 +17,7 @@ Want links like `https://video.example.com/my-room` instead of
 is treated as a room name and opens that Daily room in a full-page Prebuilt
 iframe (see `src/BrandedPrebuilt.tsx`). Nothing about Prebuilt changes.
 
-1. Set `VITE_DAILY_DOMAIN=your-domain` in `.env.local` (defaults to `hush`).
+1. Set `VITE_DAILY_DOMAIN=your-domain` in `.env.local`. If it is unset or blank, it defaults to `hush`.
 2. `npm run dev`, then open `http://localhost:3000/<room-name>`.
 3. Private room? Add the meeting token: `/<room-name>?t=<token>`.
 
