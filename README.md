@@ -22,7 +22,7 @@ iframe (see `src/BrandedPrebuilt.tsx`). Nothing about Prebuilt changes.
 3. Private room? Add the meeting token: `/<room-name>?t=<token>`.
 
 When you deploy, your host must serve `index.html` for every path (SPA
-fallback). On Vercel that is a rewrite of `/(.*)` to `/index.html`.
+fallback). On Vercel, `vercel.json` in this repo already does that.
 
 Note: the browser shows your domain, but the call still runs on
 `your-domain.daily.co`. Daily's logs and dashboard will show the Daily room URL.
